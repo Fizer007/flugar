@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Status Dashboard</h1>
+            <p>Мониторинг в реальном времени</p>
+        </header>
+
+        <div class="dashboard">
+            <div class="card">
+                <div class="icon">📡</div>
+                <div class="info">
+                    <h3>Пинг</h3>
+                    <p id="ping-value">-- ms</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="icon">👥</div>
+                <div class="info">
+                    <h3>Посетители</h3>
+                    <p id="online-count">1</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
