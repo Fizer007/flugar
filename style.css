@@ -1,51 +1,53 @@
 body, html {
-    margin: 0;
-    padding: 0;
+    margin: 0; padding: 0;
     overflow: hidden;
-    background: #1a1a1a;
-    font-family: sans-serif;
+    background: #121212; /* Темный фон космоса */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 #ui {
     position: absolute;
-    top: 10px;
-    left: 10px;
+    top: 20px; left: 20px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     z-index: 10;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 15px;
+    border-radius: 10px;
+    backdrop-filter: blur(5px);
 }
 
 #nickname {
     padding: 8px;
-    border-radius: 5px;
-    border: none;
-    outline: none;
+    border-radius: 4px;
+    border: 1px solid #444;
+    background: #222;
+    color: #fff;
 }
 
 #toolbar {
     display: flex;
-    gap: 5px;
+    gap: 8px;
 }
 
 .block-opt {
-    width: 40px;
-    height: 40px;
-    border: 2px solid #fff;
+    width: 35px; height: 35px;
+    border: 2px solid transparent;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    color: white;
-    background: #333;
+    transition: 0.2s;
+    border-radius: 4px;
 }
+
+.block-opt[data-color="#4CAF50"] { background: #4CAF50; }
+.block-opt[data-color="#2196F3"] { background: #2196F3; }
+.block-opt[data-color="#FF5722"] { background: #FF5722; }
+.block-opt[data-color="#795548"] { background: #795548; }
 
 .block-opt.selected {
-    border-color: #ffeb3b;
-    transform: scale(1.1);
+    border-color: #fff;
+    box-shadow: 0 0 10px #fff;
+    transform: translateY(-3px);
 }
 
-#gameCanvas {
-    display: block;
-}
+#gameCanvas { display: block; cursor: crosshair; }
