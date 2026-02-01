@@ -3,15 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Проигрыватель GIF</title>
+    <title>SuperBuild Online</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-    <div class="container">
-        <img src="kaka.gif" alt="Анимация" id="gif-player">
+    <div id="ui">
+        <input type="text" id="nickname" placeholder="Твой ник..." maxlength="10">
+        <div id="toolbar">
+            <div class="block-opt selected" data-color="#4CAF50">Зеленый</div>
+            <div class="block-opt" data-color="#2196F3">Синий</div>
+            <div class="block-opt" data-color="#FF5722">Оранжевый</div>
+        </div>
     </div>
-
+    <canvas id="gameCanvas"></canvas>
     <script src="script.js"></script>
 </body>
 </html>
