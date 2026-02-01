@@ -3,39 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Dota Vertical Mid</title>
+    <title>Dota Co-op Defense</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div id="lobby">
         <div class="menu-card">
-            <h1 class="gold-text">DOTA <span class="red">MID</span></h1>
+            <h1 class="gold-text">DEFENSE <span class="red">CO-OP</span></h1>
+            <p>Защищайте трон вместе с другом!</p>
+            
             <div class="hero-select">
-                <div class="hero-opt active" id="hero-axe" onclick="selHero('axe')">AXE (Ближник)</div>
-                <div class="hero-opt" id="hero-sniper" onclick="selHero('sniper')">SNIPER (Дальник)</div>
+                <div class="hero-opt active" onclick="selHero('sven')">SVEN (Ближний, Жирный)</div>
+                <div class="hero-opt" onclick="selHero('drow')">DROW (Дальний, Урон)</div>
             </div>
-            <div class="id-display">ID: <span id="my-id">...</span></div>
+
+            <div class="id-display">Твой ID: <span id="my-id" style="color:#0f0">...</span></div>
             <input type="text" id="join-id" placeholder="ID друга">
-            <button id="connect-btn" class="main-btn">ИГРАТЬ 1x1</button>
+            <button id="connect-btn" class="main-btn">НАЧАТЬ ОБОРОНУ</button>
         </div>
     </div>
 
+    <div id="game-over" class="hidden">
+        <h1>ТРОН РАЗРУШЕН</h1>
+        <button onclick="location.reload()">ЕЩЕ РАЗ</button>
+    </div>
+
     <div id="game-ui" style="display:none;">
-        <div class="stats-top">
-            <div class="gold-count">💰 <span id="gold-val">600</span></div>
-            <div class="wave-timer">СЛЕД. ВОЛНА: <span id="timer">30</span>с</div>
+        <div class="top-panel">
+            <div class="stat-box">💰 <span id="gold-val">500</span></div>
+            <div class="stat-box">💀 Волн: <span id="wave-val">1</span></div>
+            <div class="stat-box timer-box">⏳ <span id="timer">PREPARE</span></div>
+        </div>
+
+        <div id="throne-status">
+            <span>❤️ ТРОН:</span>
+            <div class="hp-bar-throne"><div id="throne-hp-fill"></div></div>
         </div>
 
         <div id="shop" class="hidden">
-            <h3>ЛАВКА</h3>
-            <button onclick="buy('boots')">Сапог (+скорость) - 400</button>
-            <button onclick="buy('sword')">Меч (+урон) - 500</button>
+            <h2>ЛАВКА</h2>
+            <div class="shop-items">
+                <div class="item" onclick="buy('dmg')">⚔️ Урон (+10)<br><span>300g</span></div>
+                <div class="item" onclick="buy('heal')">🧪 Лечение<br><span>100g</span></div>
+                <div class="item" onclick="buy('speed')">⚡ Скорость<br><span>400g</span></div>
+            </div>
+            <small>Закроется через пару секунд...</small>
         </div>
 
         <div class="controls">
             <div id="joy-base"><div id="joy-stick"></div></div>
-            <button id="atk-btn">ATTACK</button>
+            <button id="atk-btn" class="atk-btn">⚔️</button>
         </div>
     </div>
 
