@@ -3,17 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SuperBuild Online</title>
+    <title>Multiplayer Build Online</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
     <div id="ui">
         <input type="text" id="nickname" placeholder="Твой ник..." maxlength="10">
         <div id="toolbar">
-            <div class="block-opt selected" data-color="#4CAF50">Зеленый</div>
-            <div class="block-opt" data-color="#2196F3">Синий</div>
-            <div class="block-opt" data-color="#FF5722">Оранжевый</div>
+            <div class="block-opt selected" data-color="#4CAF50">Трава</div>
+            <div class="block-opt" data-color="#2196F3">Вода</div>
+            <div class="block-opt" data-color="#FF5722">Кирпич</div>
+            <div class="block-opt" data-color="#795548">Дерево</div>
         </div>
+        <p style="color: white; font-size: 10px; margin: 5px;">ЛКМ — строить, ПКМ — удалить</p>
     </div>
     <canvas id="gameCanvas"></canvas>
     <script src="script.js"></script>
