@@ -1,82 +1,89 @@
-// --- НАСТРОЙКИ SUPABASE ---
-const SUPABASE_URL = 'https://your-project.supabase.co'; // ТВОЙ URL
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'; // ТВОЙ KEY
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const nickInput = document.getElementById('nickname');
+const myIdDisplay = document.getElementById('my-id');
+const peerInput = document.getElementById('peer-id-input');
 const gridSize = 40;
-let blocks = [];
-let selectedColor = '#4CAF50';
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-// Выбор цвета
-document.querySelectorAll('.block-opt').forEach(opt => {
-    opt.addEventListener('click', (e) => {
-        document.querySelector('.selected').classList.remove('selected');
-        e.target.classList.add('selected');
-        selectedColor = e.target.getAttribute('data-color');
-    });
-});
+let blocks = [];
+let connections = [];
+const peer = new Peer(); 
 
-// Загрузка всех блоков при старте
-async function init() {
-    const { data } = await supabaseClient.from('blocks').select('*');
-    if (data) blocks = data;
-    draw();
+peer.on('open', (id) => { myIdDisplay.innerText = id; });
+peer.on('connection', (conn) => { setupConnection(conn); });
+
+function connectToFriend() {
+    const friendId = peerInput.value;
+    if (friendId) setupConnection(peer.connect(friendId));
 }
 
-// Слушаем онлайн изменения
-supabaseClient
-    .channel('public:blocks')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'blocks' }, () => {
-        // Просто перезагружаем всё для простоты синхронизации
-        init();
-    })
-    .subscribe();
+function setupConnection(conn) {
+    connections.push(conn);
+    conn.on('data', (data) => {
+        if (data.type === 'newBlock') {
+            blocks.push(data.block);
+            draw();
+        }
+    });
+}
 
-// Рисование
+// Выбор цвета
+let selectedColor = '#4CAF50';
+document.querySelectorAll('.block-opt').forEach(opt => {
+    opt.style.background = opt.dataset.color;
+    opt.onclick = () => {
+        document.querySelector('.selected').classList.remove('selected');
+        opt.classList.add('selected');
+        selectedColor = opt.dataset.color;
+    };
+});
+
+// Функция установки блока
+function placeBlock(clientX, clientY) {
+    const myNick = document.getElementById('nickname').value || "Я";
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((clientX - rect.left) / gridSize) * gridSize;
+    const y = Math.floor((clientY - rect.top) / gridSize) * gridSize;
+    
+    // Проверка, нет ли уже блока здесь (чтобы не спамить)
+    if (blocks.some(b => b.x === x && b.y === y)) return;
+
+    const newBlock = { x, y, color: selectedColor, owner: myNick };
+    blocks.push(newBlock);
+    draw();
+
+    connections.forEach(conn => {
+        if (conn.open) conn.send({ type: 'newBlock', block: newBlock });
+    });
+}
+
+// Для ПК
+canvas.addEventListener('mousedown', (e) => placeBlock(e.clientX, e.clientY));
+
+// ДЛЯ ТЕЛЕФОНОВ
+canvas.addEventListener('touchstart', (e) => {
+    const touch = e.touches[0];
+    placeBlock(touch.clientX, touch.clientY);
+}, { passive: false });
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Сетка
-    ctx.strokeStyle = '#222';
-    for (let x = 0; x < canvas.width; x += gridSize) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-    }
-    for (let y = 0; y < canvas.height; y += gridSize) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-    }
+    // Рисуем сетку (слабую)
+    ctx.strokeStyle = '#2a2a2a';
+    for(let i=0; i<canvas.width; i+=gridSize) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+    for(let i=0; i<canvas.height; i+=gridSize) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
 
-    // Блоки
     blocks.forEach(b => {
         ctx.fillStyle = b.color;
         ctx.fillRect(b.x, b.y, gridSize, gridSize);
-        // Тень ника
-        ctx.fillStyle = 'white';
-        ctx.font = '10px sans-serif';
-        ctx.fillText(b.owner || '?', b.x + 2, b.y + 12);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '9px Arial';
+        ctx.fillText(b.owner, b.x + 2, b.y + 10);
     });
 }
-
-// Ставим блок (ЛКМ)
-canvas.addEventListener('mousedown', async (e) => {
-    const x = Math.floor(e.clientX / gridSize) * gridSize;
-    const y = Math.floor(e.clientY / gridSize) * gridSize;
-    const nick = nickInput.value || 'Player';
-
-    if (e.button === 0) { // Левая кнопка
-        await supabaseClient.from('blocks').insert([{ x, y, color: selectedColor, owner: nick }]);
-    } else if (e.button === 2) { // Правая кнопка (удалить)
-        await supabaseClient.from('blocks').delete().match({ x, y });
-    }
-});
-
-// Отключаем меню правой кнопки мыши
-canvas.oncontextmenu = (e) => e.preventDefault();
 
 window.addEventListener('resize', () => {
     canvas.width = window.innerWidth;
@@ -84,4 +91,4 @@ window.addEventListener('resize', () => {
     draw();
 });
 
-init();
+draw();
