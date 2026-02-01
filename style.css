@@ -1,71 +1,20 @@
-body { 
-    margin: 0; 
-    background: #0f1014; 
-    color: #e1e1e1; 
-    font-family: 'Arial', sans-serif; 
-}
+body, html { margin: 0; padding: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+.gold-text { color: #f1c40f; text-shadow: 0 0 10px rgba(241, 196, 15, 0.5); }
+.red { color: #e74c3c; }
 
-#menu { 
-    position: fixed; 
-    inset: 0; 
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    background: radial-gradient(circle, #1a1c24 0%, #050505 100%); 
-}
+#lobby { position: fixed; inset: 0; display: flex; justify-content: center; align-items: center; background: #0a0a0f; z-index: 100; }
+.menu-card { background: #161a21; padding: 30px; border: 2px solid #34495e; border-radius: 10px; text-align: center; }
+.hero-select { display: flex; flex-direction: column; gap: 10px; margin: 20px 0; }
+.hero-opt { padding: 10px; border: 1px solid #444; cursor: pointer; color: #bbb; }
+.hero-opt.active { border-color: #f1c40f; color: #fff; background: #1e272e; }
 
-.box { 
-    background: #1c1f26; 
-    padding: 30px; 
-    border: 1px solid #383d4a; 
-    border-radius: 12px; 
-    text-align: center; 
-    width: 320px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-}
+/* Игровой интерфейс */
+#game-ui { position: fixed; inset: 0; pointer-events: none; }
+.stats-top { position: absolute; top: 20px; width: 100%; display: flex; justify-content: space-around; pointer-events: auto; }
+#shop { position: absolute; left: 20px; top: 100px; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #f1c40f; pointer-events: auto; }
+.hidden { display: none; }
 
-.section { margin: 20px 0; }
-
-#my-id-container {
-    background: #000;
-    padding: 10px;
-    border-radius: 6px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border: 1px solid #444;
-}
-
-#peer-id { color: #00ff88; font-family: monospace; font-size: 14px; }
-
-input { 
-    padding: 12px; 
-    border: 1px solid #444; 
-    background: #0a0a0a; 
-    color: #fff; 
-    width: 90%; 
-    border-radius: 6px;
-    margin-bottom: 10px;
-}
-
-button { 
-    padding: 8px 12px; 
-    background: #383d4a; 
-    color: white; 
-    border: none; 
-    border-radius: 4px; 
-    cursor: pointer; 
-}
-
-.primary-btn {
-    background: #a42323;
-    width: 100%;
-    font-weight: bold;
-    padding: 12px;
-}
-
-.primary-btn:hover { background: #ce2e2e; }
-
-.divider { color: #555; font-size: 12px; margin: 10px 0; }
-
-#status { color: #888; font-size: 13px; }
+.controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-around; align-items: center; pointer-events: auto; }
+#joy-base { width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid #555; position: relative; }
+#joy-stick { width: 40px; height: 40px; background: #fff; border-radius: 50%; position: absolute; top: 30px; left: 30px; }
+#atk-btn { width: 80px; height: 80px; border-radius: 50%; background: #c0392b; color: #fff; border: 4px solid #5d1a13; font-weight: bold; }
