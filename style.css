@@ -1,20 +1,35 @@
-body, html { margin: 0; padding: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
-.gold-text { color: #f1c40f; text-shadow: 0 0 10px rgba(241, 196, 15, 0.5); }
+body, html { margin: 0; background: #050505; color: white; font-family: 'Arial', sans-serif; overflow: hidden; }
+.hidden { display: none !important; }
+.gold-text { color: #f1c40f; }
 .red { color: #e74c3c; }
 
-#lobby { position: fixed; inset: 0; display: flex; justify-content: center; align-items: center; background: #0a0a0f; z-index: 100; }
-.menu-card { background: #161a21; padding: 30px; border: 2px solid #34495e; border-radius: 10px; text-align: center; }
-.hero-select { display: flex; flex-direction: column; gap: 10px; margin: 20px 0; }
-.hero-opt { padding: 10px; border: 1px solid #444; cursor: pointer; color: #bbb; }
-.hero-opt.active { border-color: #f1c40f; color: #fff; background: #1e272e; }
+/* Лобби и Game Over */
+#lobby, #game-over { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
+.menu-card { background: #1c1f26; padding: 30px; border: 1px solid #444; border-radius: 10px; text-align: center; width: 300px; }
+.hero-opt { padding: 10px; margin: 5px; background: #222; border: 1px solid #555; cursor: pointer; }
+.hero-opt.active { border-color: #0f0; background: #003300; }
+input { width: 90%; padding: 10px; margin: 10px 0; background: #000; border: 1px solid #555; color: #fff; }
+.main-btn { width: 100%; padding: 15px; background: #27ae60; border: none; color: white; font-weight: bold; font-size: 16px; cursor: pointer; }
 
-/* Игровой интерфейс */
+/* Интерфейс игры */
 #game-ui { position: fixed; inset: 0; pointer-events: none; }
-.stats-top { position: absolute; top: 20px; width: 100%; display: flex; justify-content: space-around; pointer-events: auto; }
-#shop { position: absolute; left: 20px; top: 100px; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #f1c40f; pointer-events: auto; }
-.hidden { display: none; }
+.top-panel { display: flex; justify-content: space-between; padding: 10px; pointer-events: auto; }
+.stat-box { background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 5px; font-weight: bold; border: 1px solid #444; }
 
-.controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-around; align-items: center; pointer-events: auto; }
-#joy-base { width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid #555; position: relative; }
-#joy-stick { width: 40px; height: 40px; background: #fff; border-radius: 50%; position: absolute; top: 30px; left: 30px; }
-#atk-btn { width: 80px; height: 80px; border-radius: 50%; background: #c0392b; color: #fff; border: 4px solid #5d1a13; font-weight: bold; }
+/* Трон HP */
+#throne-status { position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); width: 200px; text-align: center; text-shadow: 1px 1px 0 #000; }
+.hp-bar-throne { width: 100%; height: 15px; background: #333; border: 2px solid #fff; margin-top: 5px; }
+#throne-hp-fill { width: 100%; height: 100%; background: #e74c3c; transition: width 0.2s; }
+
+/* Магазин */
+#shop { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a2e; padding: 20px; border: 2px solid #f1c40f; border-radius: 10px; pointer-events: auto; text-align: center; z-index: 50; }
+.shop-items { display: flex; gap: 10px; margin-top: 10px; }
+.item { background: #222; padding: 10px; border: 1px solid #555; cursor: pointer; width: 80px; }
+.item:active { background: #444; }
+
+/* Управление */
+.controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-between; padding: 0 40px; box-sizing: border-box; pointer-events: auto; }
+#joy-base { width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); position: relative; }
+#joy-stick { width: 50px; height: 50px; background: #fff; border-radius: 50%; position: absolute; top: 35px; left: 35px; }
+.atk-btn { width: 90px; height: 90px; border-radius: 50%; background: #c0392b; border: 4px solid #fff; color: white; font-size: 30px; cursor: pointer; box-shadow: 0 0 10px red; }
+.atk-btn:active { transform: scale(0.95); }
