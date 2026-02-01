@@ -1,94 +1,101 @@
+const peerIdEl = document.getElementById('peer-id');
+const statusEl = document.getElementById('status');
+const copyBtn = document.getElementById('copy-btn');
+const connectBtn = document.getElementById('connect-btn');
+const joinInput = document.getElementById('join-id');
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const myIdDisplay = document.getElementById('my-id');
-const peerInput = document.getElementById('peer-id-input');
-const gridSize = 40;
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+let peer = new Peer(); 
+let conn;
 
-let blocks = [];
-let connections = [];
-const peer = new Peer(); 
-
-peer.on('open', (id) => { myIdDisplay.innerText = id; });
-peer.on('connection', (conn) => { setupConnection(conn); });
-
-function connectToFriend() {
-    const friendId = peerInput.value;
-    if (friendId) setupConnection(peer.connect(friendId));
-}
-
-function setupConnection(conn) {
-    connections.push(conn);
-    conn.on('data', (data) => {
-        if (data.type === 'newBlock') {
-            blocks.push(data.block);
-            draw();
-        }
-    });
-}
-
-// Выбор цвета
-let selectedColor = '#4CAF50';
-document.querySelectorAll('.block-opt').forEach(opt => {
-    opt.style.background = opt.dataset.color;
-    opt.onclick = () => {
-        document.querySelector('.selected').classList.remove('selected');
-        opt.classList.add('selected');
-        selectedColor = opt.dataset.color;
-    };
+// Автоматически создаем "комнату" при открытии
+peer.on('open', (id) => {
+    peerIdEl.innerText = id;
 });
 
-// Функция установки блока
-function placeBlock(clientX, clientY) {
-    const myNick = document.getElementById('nickname').value || "Я";
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((clientX - rect.left) / gridSize) * gridSize;
-    const y = Math.floor((clientY - rect.top) / gridSize) * gridSize;
-    
-    // Проверка, нет ли уже блока здесь (чтобы не спамить)
-    if (blocks.some(b => b.x === x && b.y === y)) return;
+// Копирование ID
+copyBtn.onclick = () => {
+    navigator.clipboard.writeText(peerIdEl.innerText);
+    copyBtn.innerText = "Готово!";
+    setTimeout(() => copyBtn.innerText = "Копировать", 2000);
+};
 
-    const newBlock = { x, y, color: selectedColor, owner: myNick };
-    blocks.push(newBlock);
-    draw();
+// Кто-то ввел наш ID и подключился к нам
+peer.on('connection', (c) => {
+    conn = c;
+    initGame();
+});
 
-    connections.forEach(conn => {
-        if (conn.open) conn.send({ type: 'newBlock', block: newBlock });
+// Мы ввели ID друга и подключаемся к нему
+connectBtn.onclick = () => {
+    const friendId = joinInput.value.trim();
+    if (!friendId) return alert("Вставь ID друга!");
+    conn = peer.connect(friendId);
+    initGame();
+};
+
+function initGame() {
+    statusEl.innerText = "Подключение...";
+    conn.on('open', () => {
+        document.getElementById('menu').style.display = 'none';
+        canvas.style.display = 'block';
+        resize();
+        setupListeners();
+        gameLoop();
+    });
+
+    conn.on('data', (data) => {
+        enemy.x = data.x;
+        enemy.y = data.y;
     });
 }
 
-// Для ПК
-canvas.addEventListener('mousedown', (e) => placeBlock(e.clientX, e.clientY));
+// Данные игроков
+const me = { x: 200, y: 200, tX: 200, tY: 200, color: '#3498db' };
+const enemy = { x: -100, y: -100, color: '#e74c3c' };
 
-// ДЛЯ ТЕЛЕФОНОВ
-canvas.addEventListener('touchstart', (e) => {
-    const touch = e.touches[0];
-    placeBlock(touch.clientX, touch.clientY);
-}, { passive: false });
-
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Рисуем сетку (слабую)
-    ctx.strokeStyle = '#2a2a2a';
-    for(let i=0; i<canvas.width; i+=gridSize) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
-    for(let i=0; i<canvas.height; i+=gridSize) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
-
-    blocks.forEach(b => {
-        ctx.fillStyle = b.color;
-        ctx.fillRect(b.x, b.y, gridSize, gridSize);
-        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.font = '9px Arial';
-        ctx.fillText(b.owner, b.x + 2, b.y + 10);
+function setupListeners() {
+    window.addEventListener('mousedown', (e) => {
+        me.tX = e.clientX;
+        me.tY = e.clientY;
     });
+    window.addEventListener('resize', resize);
 }
 
-window.addEventListener('resize', () => {
+function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    draw();
-});
+}
 
-draw();
+function gameLoop() {
+    // Движение
+    const dx = me.tX - me.x;
+    const dy = me.tY - me.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if(dist > 5) {
+        me.x += (dx/dist) * 5;
+        me.y += (dy/dist) * 5;
+        if(conn && conn.open) conn.send({ x: me.x, y: me.y });
+    }
+
+    // Фон (Мид)
+    ctx.fillStyle = "#161b22";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Рисуем персонажей
+    drawHero(me.x, me.y, me.color, "Вы");
+    drawHero(enemy.x, enemy.y, enemy.color, "Враг");
+
+    requestAnimationFrame(gameLoop);
+}
+
+function drawHero(x, y, color, name) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 20, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.fillText(name, x, y - 30);
+}
