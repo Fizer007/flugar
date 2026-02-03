@@ -2,44 +2,22 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>СУД | Процесс</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HACKER_CONSOLE_v1</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>ДЕЛО №<span id="case-id">....</span></h1>
-            <p class="subtitle">ВЫСШИЙ ТРИБУНАЛ. ПЕРВАЯ ИНСТАНЦИЯ.</p>
-        </header>
-
-        <hr>
-
-        <div id="setup-screen">
-            <p>Ваш ID: <strong id="my-id">...</strong></p>
-            <div class="input-group">
-                <input type="text" id="peer-id-input" placeholder="Введите ID оппонента">
-                <button id="connect-btn">ПОДКЛЮЧИТЬСЯ</button>
-            </div>
-            <p id="status">Ожидание подключения...</p>
+    <div id="terminal">
+        <div id="output">
+            <div>=== HACKER CONSOLE MULTIPLAYER ===</div>
+            <div>STATUS: INITIALIZING...</div>
         </div>
-
-        <div id="game-screen" class="hidden">
-            <h2 id="role-display">ВАША РОЛЬ: ...</h2>
-            <div id="scenario-text">Ожидание хода противника...</div>
-            <div id="actions" class="actions-grid">
-                </div>
-            <p id="turn-status">Раунд 1 из 5</p>
+        <div id="input-line">
+            <span id="prompt">#</span>
+            <input type="text" id="command-input" autofocus autocomplete="off">
         </div>
-
-        <div id="final-screen" class="hidden">
-            <h1 id="verdict-text">ПРИГОВОР</h1>
-            <div id="chart-container">
-                <canvas id="justice-chart"></canvas>
-            </div>
-            <button onclick="location.reload()">НАЧАТЬ НОВОЕ ДЕЛО</button>
-        </div>
+        <div id="v-keyboard"></div>
     </div>
     <script src="script.js"></script>
 </body>
