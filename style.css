@@ -1,103 +1,80 @@
 body {
-    background-color: #f4f4f4;
-    font-family: 'Georgia', serif;
+    background-color: white;
+    color: black;
+    font-family: "Times New Roman", serif;
     display: flex;
     justify-content: center;
-    align-items: center;
-    height: 100vh;
-    margin: 0;
-    color: #333;
+    padding: 20px;
+    line-height: 1.5;
 }
 
 .container {
-    background: white;
-    padding: 2rem;
-    border: 1px solid #ccc;
-    box-shadow: 10px 10px 0px #000;
-    width: 95%;
-    max-width: 450px;
+    max-width: 600px;
+    width: 100%;
+    border: 1px solid black;
+    padding: 40px;
+    text-align: center;
 }
 
-h1 {
-    text-align: center;
-    letter-spacing: 5px;
-    border-bottom: 2px solid #000;
-    padding-bottom: 10px;
-    margin-top: 0;
+h1, h2 {
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid black;
+    margin: 20px 0;
 }
 
 .hidden { display: none; }
 
+.input-group {
+    margin: 20px 0;
+}
+
 input {
-    width: 100%;
+    border: 1px solid black;
     padding: 10px;
-    margin: 10px 0;
-    border: 2px solid #000;
-    box-sizing: border-box;
     font-family: inherit;
     outline: none;
 }
 
 button {
-    width: 100%;
-    padding: 10px;
-    background: #000;
-    color: #fff;
-    border: none;
+    background: black;
+    color: white;
+    border: 1px solid black;
+    padding: 10px 20px;
     cursor: pointer;
     font-family: inherit;
     text-transform: uppercase;
-    font-weight: bold;
-    transition: 0.2s;
 }
 
-button:hover { background: #444; }
-button:disabled { background: #ccc; cursor: not-allowed; }
-
-.secondary {
-    background: #fff;
-    color: #000;
-    border: 2px solid #000;
-    margin-top: 5px;
+button:hover {
+    background: white;
+    color: black;
 }
 
-#chat-box {
-    height: 250px;
-    border: 2px solid #000;
-    margin: 10px 0;
-    padding: 10px;
-    overflow-y: auto;
-    font-size: 0.9rem;
-    background: #fafafa;
+.actions-grid {
+    display: grid;
+    gap: 10px;
+    margin-top: 30px;
 }
 
-.msg { margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #eee; line-height: 1.4; }
-
-.input-group {
+#chart-container {
+    width: 100%;
+    height: 200px;
+    border-bottom: 2px solid black;
+    border-left: 2px solid black;
+    margin: 40px 0;
+    position: relative;
     display: flex;
-    gap: 5px;
+    align-items: flex-end;
 }
 
-#message-input { margin: 0; }
-#send-btn { width: auto; white-space: nowrap; }
-
-/* Анимация молотка */
-#judge-status {
-    font-weight: bold;
-    color: #8b0000;
-    text-align: center;
-    height: 25px;
-    margin-top: 5px;
-    font-style: italic;
-}
-
-@keyframes gavel-hit {
-    0% { transform: rotate(0deg); }
-    50% { transform: rotate(-30deg); }
-    100% { transform: rotate(0deg); }
-}
-
-.gavel-icon {
-    display: inline-block;
-    animation: gavel-hit 0.5s infinite;
+.chart-bar {
+    flex: 1;
+    background: black;
+    margin: 0 2px;
+    transition: height 1s ease;
 }
