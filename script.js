@@ -1,237 +1,214 @@
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
 let peer = new Peer();
 let conn;
+let myRole = ""; 
+let chatHistory = [];
+let isMyTurn = false;
 
-// Настройки игры
-const WORLD_W = 600; 
-const WORLD_H = 1200; // Длинная карта
-let camY = 0;
+// Элементы
+const myIdDisplay = document.getElementById('my-id');
+const peerIdInput = document.getElementById('peer-id');
+const connectBtn = document.getElementById('connect-btn');
+const testBtn = document.getElementById('test-btn');
+const gameArea = document.getElementById('game-area');
+const setupRoom = document.getElementById('setup-room');
+const chatBox = document.getElementById('chat-box');
+const messageInput = document.getElementById('message-input');
+const sendBtn = document.getElementById('send-btn');
+const roleDisplay = document.getElementById('role-display');
+const statusDiv = document.getElementById('judge-status');
 
-// Состояния
-let myHero = { x: 300, y: 1000, type: 'sven', hp: 100, maxHp: 100, dmg: 20, range: 80, gold: 500 };
-let friend = { x: -100, y: -100, type: 'sven', hp: 100 }; // Игрок 2
-let throne = { x: 300, y: 1100, hp: 1000, maxHp: 1000, radius: 60 };
-let creeps = [];
-let wave = 1;
-let shopTimer = 10;
-let gameState = 'SHOP'; // 'SHOP' или 'WAVE'
+peer.on('open', id => myIdDisplay.innerText = id);
 
-// Сеть
-peer.on('open', id => document.getElementById('my-id').innerText = id);
-peer.on('connection', c => { conn = c; setupConn(); });
-document.getElementById('connect-btn').onclick = () => {
-    conn = peer.connect(document.getElementById('join-id').value);
-    setupConn();
+peer.on('connection', c => {
+    conn = c;
+    setupConnectionListeners();
+});
+
+connectBtn.onclick = () => {
+    const remoteId = peerIdInput.value.trim();
+    if (!remoteId) return alert("Введите ID!");
+    conn = peer.connect(remoteId);
+    conn.on('open', () => {
+        const r = Math.random() > 0.5 ? "ОБВИНИТЕЛЬ" : "АДВОКАТ";
+        conn.send({ type: 'START', role: (r === "ОБВИНИТЕЛЬ" ? "АДВОКАТ" : "ОБВИНИТЕЛЬ") });
+        startGame(r);
+    });
+    setupConnectionListeners();
 };
 
-function setupConn() {
-    document.getElementById('lobby').style.display = 'none';
-    document.getElementById('game-ui').style.display = 'block';
-    resize();
-    gameLoop();
-    startShopPhase(); // Игра начинается с закупа
-
+function setupConnectionListeners() {
     conn.on('data', data => {
-        if(data.type === 'move') {
-            friend = data.p; // Обновляем позицию друга
-        }
-        if(data.type === 'creep_die') {
-            // Друг убил крипа, убираем его у себя
-            creeps = creeps.filter(c => c.id !== data.id);
-        }
-        if(data.type === 'damage_throne') {
-            throne.hp = data.hp;
-            updateThroneUI();
-        }
+        if (data.type === 'START') startGame(data.role);
+        if (data.type === 'MSG') processMove("ОППОНЕНТ", data.text);
     });
 }
 
-function selHero(t) {
-    myHero.type = t;
-    myHero.range = (t === 'drow') ? 300 : 80;
-    myHero.dmg = (t === 'drow') ? 15 : 25;
-    document.querySelectorAll('.hero-opt').forEach(e => e.classList.remove('active'));
-    event.target.classList.add('active');
+function startGame(role) {
+    myRole = role;
+    chatHistory = [];
+    setupRoom.classList.add('hidden');
+    gameArea.classList.remove('hidden');
+    roleDisplay.innerText = "Роль: " + myRole;
+    isMyTurn = myRole.includes("ОБВИНИТЕЛЬ");
+    updateInputState();
+    addMessage("СИСТЕМА", isMyTurn ? "Ваш ход. Начните суд." : "Ждем оппонента...");
 }
 
-// Фазы игры
-function startShopPhase() {
-    gameState = 'SHOP';
-    shopTimer = 10;
-    document.getElementById('shop').classList.remove('hidden');
-    
-    let int = setInterval(() => {
-        shopTimer--;
-        document.getElementById('timer').innerText = shopTimer + 's (SHOP)';
-        if(shopTimer <= 0) {
-            clearInterval(int);
-            startWave();
-        }
-    }, 1000);
+function updateInputState() {
+    messageInput.disabled = !isMyTurn;
+    sendBtn.disabled = !isMyTurn;
 }
 
-function startWave() {
-    gameState = 'WAVE';
-    document.getElementById('shop').classList.add('hidden');
-    document.getElementById('wave-val').innerText = wave;
-    document.getElementById('timer').innerText = "DEFEND!";
-    
-    // Спавн крипов (только если я "Хост" или просто оба спавним одинаково)
-    // Для простоты спавним оба одинаково
-    let count = 5 + (wave * 2);
-    for(let i=0; i<count; i++) {
-        setTimeout(() => {
-            creeps.push({
-                id: Math.random(), // Уникальный ID
-                x: 100 + Math.random() * 400,
-                y: -50, // Сверху
-                hp: 30 + (wave * 10),
-                speed: 1 + (wave * 0.1)
-            });
-        }, i * 1500);
-    }
-    wave++;
-}
-
-// Управление
-let joy = { x: 0, y: 0 };
-const stick = document.getElementById('joy-stick');
-document.getElementById('joy-base').ontouchmove = e => {
-    let r = e.target.getBoundingClientRect();
-    let dx = e.touches[0].clientX - (r.left + 60);
-    let dy = e.touches[0].clientY - (r.top + 60);
-    let ang = Math.atan2(dy, dx);
-    joy.x = Math.cos(ang) * 5;
-    joy.y = Math.sin(ang) * 5;
-    stick.style.transform = `translate(${joy.x*5}px, ${joy.y*5}px)`;
+sendBtn.onclick = async () => {
+    const text = messageInput.value.trim();
+    if (!text) return;
+    addMessage("ВЫ", text);
+    if (conn) conn.send({ type: 'MSG', text: text });
+    messageInput.value = "";
+    isMyTurn = false;
+    updateInputState();
+    await processMove("ВЫ", text); 
 };
-document.getElementById('joy-base').ontouchend = () => { joy.x=0; joy.y=0; stick.style.transform='none'; };
 
-// Атака
-document.getElementById('atk-btn').onclick = () => {
-    // Ищем ближайшего крипа
-    let target = null;
-    let minD = 9999;
-    creeps.forEach(c => {
-        let d = Math.hypot(c.x - myHero.x, c.y - myHero.y);
-        if(d < myHero.range && d < minD) { minD = d; target = c; }
-    });
+async function processMove(sender, text) {
+    chatHistory.push(`${sender === "ВЫ" ? myRole : "ОППОНЕНТ"}: ${text}`);
+    await askJudge();
+    if (sender === "ОППОНЕНТ" && !statusDiv.innerText.includes("ВЕРДИКТ")) {
+        isMyTurn = true;
+        updateInputState();
+    }
+}
 
-    if(target) {
-        // Эффект удара
-        ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(target.x, target.y, 20, 0, Math.PI*2); ctx.fill();
+// ФУНКЦИЯ С ИИ БЕЗ КЛЮЧА
+async function askJudge() {
+    async function askJudge() {
+   async function askJudge() {
+    if (!statusDiv) return;
+    statusDiv.innerHTML = '🔨 СУДЬЯ ВЫХОДИТ ИЗ ТЕНИ...';
+
+    // Текст для ИИ
+    const lastMsg = chatHistory[chatHistory.length - 1];
+    const prompt = `Ты строгий судья. Одной короткой фразой прокомментируй: ${lastMsg}`;
+
+    // Настройка прерывания (если сеть висит дольше 3 секунд)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    try {
+        // Используем Pollinations через простой URL (это решает проблемы CORS)
+        const url = `https://text.pollinations.ai/${encodeURIComponent(prompt)}?model=openai`;
         
-        target.hp -= myHero.dmg;
-        if(target.hp <= 0) {
-            myHero.gold += 15;
-            document.getElementById('gold-val').innerText = myHero.gold;
-            creeps = creeps.filter(c => c !== target);
-            if(conn && conn.open) conn.send({ type: 'creep_die', id: target.id });
-            
-            // Если убили последнего крипа в волне
-            if(creeps.length === 0 && gameState === 'WAVE') {
-                setTimeout(startShopPhase, 2000);
-            }
+        const response = await fetch(url, { signal: controller.signal });
+
+        if (!response.ok) throw new Error("API не отвечает");
+
+        const aiText = await response.text();
+        clearTimeout(timeoutId);
+        
+        statusDiv.innerHTML = ""; 
+        addMessage("СУДЬЯ", aiText);
+
+    } catch (e) {
+        // ЕСЛИ СЕТЬ ИЛИ ХОСТИНГ БЛОКИРУЮТ — ВКЛЮЧАЕМ ЛОКАЛЬНОГО БОТА
+        clearTimeout(timeoutId);
+        console.warn("Сеть заблокирована, включен локальный режим");
+        
+        const backupPhrases = [
+            "Суд принял это к сведению. Что скажет защита?",
+            "Это серьезное заявление. Продолжайте.",
+            "Интересная позиция. Суд слушает дальше.",
+            "Протест отклонен! Говорите по существу.",
+            "Хмм... Звучит сомнительно. Есть ли факты?"
+        ];
+        
+        const randomPhrase = backupPhrases[Math.floor(Math.random() * backupPhrases.length)];
+        statusDiv.innerHTML = "";
+        addMessage("СУДЬЯ (AUTO)", randomPhrase);
+    }
+
+    // Логика финала процесса (после 6 сообщений)
+    if (chatHistory.length >= 6) {
+        const winner = Math.random() > 0.5 ? "ОБВИНИТЕЛЬ" : "АДВОКАТ";
+        setTimeout(() => {
+            addMessage("СУДЬЯ", `ВЕРДИКТ ВЫНЕСЕН! Победил ${winner}. Заседание окончено.`);
+            isMyTurn = false;
+            updateInputState();
+        }, 500);
+    }
+}
+
+
+    try {
+        const response = await fetch("https://text.pollinations.ai/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                messages: [{ role: "user", content: prompt }],
+                model: "openai"
+            }),
+            signal: controller.signal // Привязываем таймер
+        });
+
+        const aiText = await response.text();
+        clearTimeout(timeoutId);
+        statusDiv.innerHTML = ""; 
+        addMessage("СУДЬЯ", aiText);
+
+    } catch (e) {
+        // ЕСЛИ ИИ НЕ ОТВЕТИЛ (БЛОКИРОВКА ИЛИ СЕТЬ) - ВКЛЮЧАЕМ БОТА
+        console.log("ИИ недоступен, включаю запасного судью...");
+        const backupPhrases = [
+            "Суд принял ваше заявление.",
+            "Обвинение звучит серьезно. Что скажет защита?",
+            "Интересный аргумент. Продолжайте.",
+            "Соблюдайте тишину! Суд слушает."
+        ];
+        const randomPhrase = backupPhrases[Math.floor(Math.random() * backupPhrases.length)];
+        
+        statusDiv.innerHTML = "";
+        addMessage("СУДЬЯ (БОТ)", randomPhrase);
+    }
+
+    // Проверка на вердикт
+    if (chatHistory.length >= 6) {
+        addMessage("СУДЬЯ", "ВЕРДИКТ ВЫНЕСЕН! Процесс завершен.");
+        isMyTurn = false;
+        updateInputState();
+    }
+}
+
+    try {
+        // Используем публичный прокси для Llama (бесплатно, без ключа)
+        const response = await fetch("https://text.pollinations.ai/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                messages: [{ role: "user", content: prompt }],
+                model: "openai" // Использует GPT-подобную модель через прокси
+            })
+        });
+
+        const aiText = await response.text();
+        
+        statusDiv.innerHTML = ""; 
+        addMessage("СУДЬЯ", aiText);
+
+        if (aiText.includes("ВЕРДИКТ ВЫНЕСЕН")) {
+            isMyTurn = false;
+            updateInputState();
         }
-    }
-};
-
-window.buy = (item) => {
-    if(item === 'dmg' && myHero.gold >= 300) { myHero.gold-=300; myHero.dmg+=10; }
-    if(item === 'heal' && myHero.gold >= 100) { myHero.gold-=100; myHero.hp = Math.min(myHero.hp+50, myHero.maxHp); }
-    if(item === 'speed' && myHero.gold >= 400) { myHero.gold-=400; /* Скорость увеличивается в логике */ }
-    document.getElementById('gold-val').innerText = myHero.gold;
-};
-
-function gameLoop() {
-    if(throne.hp <= 0) {
-        document.getElementById('game-over').classList.remove('hidden');
-        return;
-    }
-
-    // Движение героя
-    myHero.x += joy.x; myHero.y += joy.y;
-    // Ограничение карты
-    myHero.x = Math.max(0, Math.min(WORLD_W, myHero.x));
-    myHero.y = Math.max(0, Math.min(WORLD_H, myHero.y));
-
-    // Камера (следит за игроком по Y, но не выходит за пределы)
-    camY = myHero.y - canvas.height / 1.5;
-    camY = Math.max(0, Math.min(WORLD_H - canvas.height, camY));
-
-    // Логика крипов
-    creeps.forEach(c => {
-        c.y += c.speed;
-        // Если крип дошел до трона
-        if(c.y > throne.y - throne.radius) {
-            throne.hp -= 1;
-            c.hp = 0; // Крип самоуничтожается об трон
-            updateThroneUI();
-            if(conn && conn.open) conn.send({ type: 'damage_throne', hp: throne.hp });
-        }
-    });
-    creeps = creeps.filter(c => c.hp > 0);
-
-    // Синхронизация
-    if(conn && conn.open) conn.send({ type: 'move', p: { x: myHero.x, y: myHero.y, type: myHero.type } });
-
-    render();
-    requestAnimationFrame(gameLoop);
-}
-
-function updateThroneUI() {
-    let pct = (throne.hp / throne.maxHp) * 100;
-    document.getElementById('throne-hp-fill').style.width = pct + '%';
-}
-
-function render() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
-    ctx.translate(0, -camY);
-
-    // Земля
-    ctx.fillStyle = "#111"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-    
-    // Трон (Наш)
-    ctx.fillStyle = "#2ecc71"; 
-    ctx.beginPath(); ctx.arc(throne.x, throne.y, throne.radius, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.fillText("НАШ ТРОН", throne.x, throne.y + 5);
-
-    // Спавн зона (Враги)
-    ctx.fillStyle = "#330000"; ctx.fillRect(0, 0, WORLD_W, 100);
-    ctx.fillStyle = "#e74c3c"; ctx.fillText("ПОРТАЛ ВРАГОВ", WORLD_W/2, 50);
-
-    // Крипы
-    creeps.forEach(c => {
-        ctx.fillStyle = "#e74c3c";
-        ctx.fillRect(c.x - 10, c.y - 10, 20, 20);
-        // HP bar крипа
-        ctx.fillStyle = "red"; ctx.fillRect(c.x-10, c.y-15, 20, 3);
-    });
-
-    // Игроки
-    drawHero(myHero, "Я");
-    drawHero(friend, "ДРУГ");
-
-    ctx.restore();
-}
-
-function drawHero(h, label) {
-    let color = (h.type === 'sven') ? '#3498db' : '#9b59b6';
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.arc(h.x, h.y, 20, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = "white"; ctx.fillText(label, h.x, h.y - 30);
-    
-    // Круг атаки
-    if(label === "Я") {
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        ctx.beginPath(); ctx.arc(h.x, h.y, h.range, 0, Math.PI*2); ctx.stroke();
+    } catch (e) {
+        statusDiv.innerHTML = "Судья взял перерыв (ошибка сети)";
+        console.error(e);
     }
 }
 
-function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+function addMessage(sender, text) {
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
 }
-window.onresize = resize;
+
+testBtn.onclick = () => startGame("ОБВИНИТЕЛЬ (ТЕСТ)");
