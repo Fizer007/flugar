@@ -1,8 +1,3 @@
-/**
- * HACKER_CONSOLE_v1.Final_Fixed
- * Исправлено: Синхронизация финала, Удаление по индексам, Статус готовности
- */
-
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 function beep(f = 500, d = 0.05) {
     try {
@@ -29,7 +24,6 @@ let enemyFinishedAttack = false;
 
 const output = document.getElementById('output');
 const input = document.getElementById('command-input');
-input.setAttribute('readonly', 'true');
 
 function log(msg, type = "info") {
     const div = document.createElement('div');
@@ -44,17 +38,12 @@ function clearConsole() {
     output.innerHTML = "<div>[SCREEN_CLEARED_FOR_SECURITY]</div>";
 }
 
-function generateCode() {
-    const words = ["ROOT", "VOID", "DATA", "CRYPT", "NODE", "BASE", "CORE"];
+function generateCode(prefix) {
     const hex = Math.floor(Math.random() * 0xFFFF).toString(16).toUpperCase();
-    return words[Math.floor(Math.random() * words.length)] + "_" + hex + "_SYS";
+    return prefix + "_" + hex + "_SYS";
 }
 
-// --- СЕТЕВАЯ ЧАСТЬ ---
-peer.on('open', id => {
-    log(`КОНСОЛЬ ОНЛАЙН. ВАШ ID: ${id}`);
-    log(`КОМАНДА: MINIGAME2_[ID_ДРУГА]`);
-});
+peer.on('open', id => log(`КОНСОЛЬ ОНЛАЙН. ID: ${id}`));
 
 peer.on('connection', c => {
     conn = c;
@@ -63,65 +52,68 @@ peer.on('connection', c => {
 
 function setupPeerListeners() {
     conn.on('data', data => {
-        if (data.type === 'G2_START') {
-            myOriginalCode = data.code;
-            log("ИГРА НАЧАТА! ЗАПОМНИТЕ СВОЙ КОД:", "sys");
+        // Гость получает оба кода от Хоста
+        if (data.type === 'GAME_SETUP') {
+            myOriginalCode = data.guestCode;
+            enemyViewCode = data.hostCode; 
+            log("ИГРА НАЧАТА! ВАШ КОД ДЛЯ ЗАПОМИНАНИЯ:");
             log(myOriginalCode);
+            
             setTimeout(() => {
                 clearConsole();
-                log("ЖДЕМ АТАКИ ВРАГА...", "sys");
-                gameState = "WAIT_FOR_ENEMY_CODE";
+                gameState = "G2_ATTACK";
+                log("АТАКУЙТЕ! КОД ВРАГА: " + enemyViewCode);
             }, 8000);
         }
         
-        if (data.type === 'YOUR_CORRUPTED_CODE') {
+        if (data.type === 'ATTACK_DONE') {
             myCorruptedFromEnemy = data.corrupted;
-            enemyFinishedAttack = true; // Враг прислал наш побитый код
+            enemyFinishedAttack = true;
             log("ВРАГ ЗАВЕРШИЛ АТАКУ", "sys");
             checkStartFinal();
         }
 
         if (data.type === 'WIN') {
-            log("ВЫ ПРОИГРАЛИ! ВРАГ ВОССТАНОВИЛ СИСТЕМУ.", "err");
+            log("ПРОИГРЫШ! СИСТЕМА ВЗЛОМАНА.", "err");
             gameState = "IDLE";
         }
     });
-
-    conn.on('error', (err) => log("ОШИБКА СВЯЗИ: " + err, "err"));
 }
 
 function checkStartFinal() {
     if (iFinishedAttack && enemyFinishedAttack) {
-        clearConsole();
-        gameState = "G2_REPAIR";
-        log("--- ФИНАЛ: РЕМОНТ! ---", "sys");
-        log("ВАШ ПОВРЕЖДЕННЫЙ КОД: " + myCorruptedFromEnemy);
-        log("ВВЕДИТЕ ОРИГИНАЛ ЦЕЛИКОМ!");
+        setTimeout(() => {
+            clearConsole();
+            gameState = "G2_REPAIR";
+            log("--- ФИНАЛ: РЕМОНТ ---", "sys");
+            log("ВАШ ПОВРЕЖДЕННЫЙ КОД: " + myCorruptedFromEnemy);
+        }, 500);
     } else if (iFinishedAttack) {
-        log("ВЫ ГОТОВЫ. ОЖИДАНИЕ ДЕЙСТВИЙ ВРАГА...", "sys");
+        log("ОЖИДАНИЕ ВРАГА...", "sys");
     }
 }
 
-// --- ОБРАБОТКА ВВОДА ---
 function handleCommand(val) {
     val = val.toUpperCase().trim();
     if (!val) return;
 
     if (gameState === "IDLE" && val.startsWith("MINIGAME2_")) {
-        const targetId = val.split("_")[1];
-        conn = peer.connect(targetId);
+        const tid = val.split("_")[1];
+        conn = peer.connect(tid);
         setupPeerListeners();
         conn.on('open', () => {
-            log("СВЯЗЬ УСТАНОВЛЕНА!", "sys");
-            const codeForMe = generateCode();
-            const codeForEnemy = generateCode();
-            myOriginalCode = codeForMe;
-            log("ЗАПОМНИТЕ ВАШ КОД: " + myOriginalCode);
-            conn.send({type: 'G2_START', code: codeForEnemy});
+            const hCode = generateCode("HOST");
+            const gCode = generateCode("GUEST");
             
+            myOriginalCode = hCode;
+            enemyViewCode = gCode;
+            
+            // Отправляем гостю настройки
+            conn.send({type: 'GAME_SETUP', hostCode: hCode, guestCode: gCode});
+            
+            log("ЗАПОМНИТЕ ВАШ КОД: " + myOriginalCode);
             setTimeout(() => {
                 clearConsole();
-                enemyViewCode = codeForEnemy;
                 gameState = "G2_ATTACK";
                 log("АТАКУЙТЕ! КОД ВРАГА: " + enemyViewCode);
             }, 8000);
@@ -130,69 +122,55 @@ function handleCommand(val) {
     }
 
     if (gameState === "G2_ATTACK") {
-        let char = val[0];
-        let idx = val.length > 1 ? parseInt(val.slice(1)) : 1;
+        let char = val[0], idx = val.length > 1 ? parseInt(val.slice(1)) : 1;
         let count = 0, newCode = "", found = false;
-
         for (let i = 0; i < enemyViewCode.length; i++) {
             if (enemyViewCode[i] === char) {
                 count++;
-                if (count === idx && !found) {
-                    newCode += "_"; found = true; continue;
-                }
+                if (count === idx && !found) { newCode += "_"; found = true; continue; }
             }
             newCode += enemyViewCode[i];
         }
-
         if (found) {
             enemyViewCode = newCode;
             attackCount++;
             log(`УДАЛЕНО: ${val} (${attackCount}/3)`);
-            log("КОД ВРАГА: " + enemyViewCode);
             if (attackCount === 3) {
-                attackCount = 0;
-                iFinishedAttack = true;
-                conn.send({type: 'YOUR_CORRUPTED_CODE', corrupted: enemyViewCode});
-                checkStartFinal(); 
+                attackCount = 0; iFinishedAttack = true;
+                conn.send({type: 'ATTACK_DONE', corrupted: enemyViewCode});
+                checkStartFinal();
             }
-        } else { log("СИМВОЛ НЕ НАЙДЕН", "err"); }
+        } else log("НЕТ СИМВОЛА", "err");
     }
 
     if (gameState === "G2_REPAIR") {
         if (val === myOriginalCode) {
-            log("ПОБЕДА! СИСТЕМА ВОССТАНОВЛЕНА.", "sys");
+            log("ПОБЕДА!", "sys");
             conn.send({type: 'WIN'});
             gameState = "IDLE";
-        } else { log("НЕВЕРНЫЙ КОД!", "err"); }
+        } else log("ОШИБКА!", "err");
     }
 }
 
-// --- КЛАВИАТУРА ---
+// Рендер клавиатуры (сокращенно)
 const vKey = document.getElementById('v-keyboard');
 vKey.innerHTML = "";
-vKey.style.display = "grid";
-vKey.style.gridTemplateColumns = "repeat(10, 1fr)";
-vKey.style.gap = "4px";
-
-const layout = "1234567890QWERTYUIOPASDFGHJKLZXCVBNM@._".split("");
-layout.forEach(char => {
+"1234567890QWERTYUIOPASDFGHJKLZXCVBNM@._".split("").forEach(char => {
     const k = document.createElement('div');
     k.className = 'key'; k.innerText = char;
     k.onclick = () => { input.value += char; beep(300, 0.02); };
     vKey.appendChild(k);
 });
 
+// Кнопки управления
 const nav = document.createElement('div');
 nav.style = "grid-column: span 10; display: flex; gap: 5px; margin-top: 5px;";
-const btnS = "flex: 1; border: 1px solid #fff; color: #fff; text-align: center; padding: 18px; cursor: pointer;";
+const btnS = "flex: 1; border: 1px solid #fff; color: #fff; text-align: center; padding: 15px; cursor: pointer;";
+const b = document.createElement('div'); b.innerText = "BACK"; b.style = btnS;
+const s = document.createElement('div'); s.innerText = "SPACE"; s.style = btnS + "flex: 2;";
+const e = document.createElement('div'); e.innerText = "ENTER"; e.style = btnS;
 
-const back = document.createElement('div'); back.innerText = "BACK"; back.style = btnS;
-const spc = document.createElement('div'); spc.innerText = "SPACE"; spc.style = btnS + "flex: 2;";
-const ent = document.createElement('div'); ent.innerText = "ENTER"; ent.style = btnS;
-
-back.onclick = () => { input.value = input.value.slice(0, -1); beep(200); };
-spc.onclick = () => { input.value += " "; beep(200); };
-ent.onclick = () => { handleCommand(input.value); input.value = ""; beep(600); };
-
-nav.append(back, spc, ent);
-vKey.appendChild(nav);
+b.onclick = () => { input.value = input.value.slice(0, -1); beep(200); };
+s.onclick = () => { input.value += " "; beep(200); };
+e.onclick = () => { handleCommand(input.value); input.value = ""; beep(600); };
+nav.append(b, s, e); vKey.appendChild(nav);
