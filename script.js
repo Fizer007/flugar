@@ -1,1699 +1,758 @@
-// ==================== КОНФИГУРАЦИЯ ====================
-const CONFIG = {
-    TILE_SIZE: 32,
-    CHUNK_SIZE: 16,
-    WORLD_WIDTH: 100,
-    WORLD_HEIGHT: 50,
-    GRAVITY: 0.5,
-    PLAYER_JUMP_FORCE: -12,
-    PLAYER_SPEED: 5,
-    MAX_HEALTH: 100,
-    MAX_HUNGER: 100,
-    DAY_LENGTH: 60000, // 60 секунд на полный день
-    NIGHT_MONSTER_SPAWN_RATE: 0.02,
-    DAY_MONSTER_SPAWN_RATE: 0.005
-};
-
-// Типы блоков
-const BLOCK_TYPES = {
-    0: { name: 'air', color: 'transparent', solid: false },
-    1: { name: 'grass', color: '#7cfc00', solid: true, health: 30, drop: 'dirt' },
-    2: { name: 'dirt', color: '#8b4513', solid: true, health: 20, drop: 'dirt' },
-    3: { name: 'stone', color: '#808080', solid: true, health: 50, drop: 'stone' },
-    4: { name: 'wood', color: '#deb887', solid: true, health: 40, drop: 'wood' },
-    5: { name: 'leaves', color: '#228b22', solid: false, health: 10, drop: 'wood' },
-    6: { name: 'sand', color: '#f4e542', solid: true, health: 15, drop: 'sand' },
-    7: { name: 'water', color: '#1e90ff', solid: false, health: 0 },
-    8: { name: 'iron', color: '#b0c4de', solid: true, health: 80, drop: 'iron' },
-    9: { name: 'coal', color: '#2f4f4f', solid: true, health: 60, drop: 'coal' },
-    10: { name: 'torch', color: '#ff4500', solid: false, light: true }
-};
-
-// Типы существ
-const ENTITY_TYPES = {
-    player: { width: 24, height: 48, color: '#e94560', speed: 5, jumpForce: -12 },
-    zombie: { width: 28, height: 52, color: '#228b22', speed: 1.5, health: 50, damage: 10 },
-    skeleton: { width: 26, height: 50, color: '#f5f5f5', speed: 2, health: 40, damage: 15 },
-    slime: { width: 32, height: 32, color: '#32cd32', speed: 1, health: 30, damage: 5 },
-    bat: { width: 20, height: 20, color: '#4b0082', speed: 3, health: 20, damage: 3 },
-    spider: { width: 30, height: 24, color: '#8b0000', speed: 2.5, health: 35, damage: 8 }
-};
-
-// Предметы
-const ITEMS = {
-    dirt: { name: 'Земля', icon: '🟫', color: '#8b4513', type: 'block', placeable: 2 },
-    stone: { name: 'Камень', icon: '🪨', color: '#808080', type: 'block', placeable: 3 },
-    wood: { name: 'Дерево', icon: '🪵', color: '#deb887', type: 'block', placeable: 4 },
-    iron: { name: 'Железо', icon: '⛓️', color: '#b0c4de', type: 'material' },
-    coal: { name: 'Уголь', icon: '⚫', color: '#2f4f4f', type: 'material' },
-    apple: { name: 'Яблоко', icon: '🍎', color: '#ff0000', type: 'food', hunger: 20 },
-    meat: { name: 'Мясо', icon: '🥩', color: '#8b0000', type: 'food', hunger: 40 },
-    sword: { name: 'Меч', icon: '⚔️', color: '#c0c0c0', type: 'weapon', damage: 25 },
-    pickaxe: { name: 'Кирка', icon: '⛏️', color: '#d2691e', type: 'tool', efficiency: 2 },
-    axe: { name: 'Топор', icon: '🪓', color: '#8b4513', type: 'tool', efficiency: 3 },
-    torch: { name: 'Факел', icon: '🔦', color: '#ff4500', type: 'light', placeable: 10 },
-    health_potion: { name: 'Зелье здоровья', icon: '🧪', color: '#ff0000', type: 'potion', health: 50 }
-};
-
-// Рецепты крафта
-const CRAFT_RECIPES = [
-    { output: 'torch', inputs: { wood: 1, coal: 1 }, amount: 4 },
-    { output: 'sword', inputs: { wood: 2, iron: 5 }, amount: 1 },
-    { output: 'pickaxe', inputs: { wood: 3, iron: 3 }, amount: 1 },
-    { output: 'axe', inputs: { wood: 3, iron: 2 }, amount: 1 },
-    { output: 'health_potion', inputs: { apple: 3, coal: 1 }, amount: 1 }
-];
-
-// Биомы
-const BIOMES = {
-    forest: { surface: 1, underground: 2, treeChance: 0.1, grassColor: '#7cfc00' },
-    desert: { surface: 6, underground: 6, treeChance: 0.01, grassColor: '#f4e542' },
-    mountains: { surface: 3, underground: 3, treeChance: 0.05, grassColor: '#808080' },
-    swamp: { surface: 2, underground: 2, waterLevel: 0.3, grassColor: '#228b22' }
-};
-
-// ==================== СОСТОЯНИЕ ИГРЫ ====================
-let gameState = {
-    // Игрок
-    player: {
-        x: 500,
-        y: 300,
-        vx: 0,
-        vy: 0,
-        width: ENTITY_TYPES.player.width,
-        height: ENTITY_TYPES.player.height,
-        health: CONFIG.MAX_HEALTH,
-        hunger: CONFIG.MAX_HUNGER,
-        maxHealth: CONFIG.MAX_HEALTH,
-        maxHunger: CONFIG.MAX_HUNGER,
-        damage: 10,
-        armor: 0,
-        speed: CONFIG.PLAYER_SPEED,
-        jumping: false,
-        facing: 1, // 1 = вправо, -1 = влево
-        onGround: false,
-        inventory: {
-            dirt: 10,
-            stone: 5,
-            wood: 8,
-            iron: 0,
-            coal: 0,
-            apple: 3,
-            meat: 0,
-            sword: 0,
-            pickaxe: 1,
-            axe: 0,
-            torch: 2,
-            health_potion: 0
-        },
-        hotbar: ['pickaxe', 'dirt', 'wood', 'torch', 'apple', 'sword'],
-        selectedSlot: 0
-    },
-    
-    // Мир
-    world: [],
-    chunks: {},
-    
-    // Существа
-    entities: [],
-    
-    // Время
-    time: {
-        isDay: true,
-        timeOfDay: 0, // 0-1, где 0 = полночь, 0.5 = полдень
-        day: 1
-    },
-    
-    // Статистика
-    stats: {
-        blocksBroken: 0,
-        monstersKilled: 0,
-        distanceTraveled: 0
-    },
-    
-    // Мультиплеер
-    multiplayer: {
-        connected: false,
-        peer: null,
-        conn: null,
-        roomId: null,
-        players: []
-    },
-    
-    // Система
-    paused: false,
-    deviceType: 'desktop',
-    canvas: null,
-    ctx: null,
-    camera: { x: 0, y: 0, width: 0, height: 0 },
-    lastTime: 0,
-    keys: {},
-    mouse: { x: 0, y: 0, down: false, rightDown: false },
-    touch: { joystick: { active: false, x: 0, y: 0, startX: 0, startY: 0 } },
-    animations: []
-};
-
-// ==================== ИНИЦИАЛИЗАЦИЯ ====================
-function init() {
-    detectDevice();
-    setupCanvas();
-    generateWorld();
-    setupEventListeners();
-    setupUI();
-    gameLoop();
-    logEvent('Игра запущена! Соберите ресурсы и постройте укрытие.');
-}
-
-function detectDevice() {
-    const isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|Windows Phone/i.test(navigator.userAgent);
-    gameState.deviceType = isMobile ? 'mobile' : 'desktop';
-    document.getElementById('deviceType').textContent = 
-        `Устройство: ${isMobile ? 'Мобильное' : 'ПК'}`;
-    document.getElementById('screenSize').textContent = 
-        `Экран: ${window.innerWidth}×${window.innerHeight}`;
-    
-    // Показываем/скрываем мобильное управление
-    const mobileControls = document.getElementById('mobileControls');
-    mobileControls.style.display = isMobile ? 'block' : 'none';
-}
-
-function setupCanvas() {
-    gameState.canvas = document.getElementById('gameCanvas');
-    gameState.ctx = gameState.canvas.getContext('2d');
-    
-    // Устанавливаем размер canvas
-    function resizeCanvas() {
-        const container = gameState.canvas.parentElement;
-        gameState.canvas.width = container.clientWidth;
-        gameState.canvas.height = container.clientHeight;
-        gameState.camera.width = gameState.canvas.width;
-        gameState.camera.height = gameState.canvas.height;
+class MultiplayerTowerDefense {
+    constructor() {
+        this.peer = null;
+        this.conn = null;
+        this.peerId = null;
+        this.opponentId = null;
+        this.isHost = false;
         
-        // Центрируем камеру на игроке
-        gameState.camera.x = gameState.player.x - gameState.camera.width / 2;
-        gameState.camera.y = gameState.player.y - gameState.camera.height / 2;
-    }
-    
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-}
-
-function generateWorld() {
-    // Создаём пустой мир
-    for (let y = 0; y < CONFIG.WORLD_HEIGHT; y++) {
-        gameState.world[y] = [];
-        for (let x = 0; x < CONFIG.WORLD_WIDTH; x++) {
-            gameState.world[y][x] = 0; // Воздух
-        }
-    }
-    
-    // Генерируем ландшафт
-    const surfaceHeight = 20;
-    const amplitude = 5;
-    const frequency = 0.1;
-    
-    for (let x = 0; x < CONFIG.WORLD_WIDTH; x++) {
-        // Синусоидальная поверхность
-        let height = surfaceHeight + Math.sin(x * frequency) * amplitude;
-        height = Math.floor(height);
+        this.gameState = {
+            players: {},
+            towers: [],
+            enemies: [],
+            bullets: [],
+            wave: 1,
+            gameStarted: false,
+            money: 200,
+            health: 100,
+            opponentMoney: 200,
+            opponentHealth: 100,
+            selectedTower: null,
+            path: []
+        };
         
-        // Добавляем случайные вариации
-        height += Math.floor(Math.random() * 3) - 1;
+        this.cellSize = 60;
+        this.gameSpeed = 2;
+        this.lastUpdate = Date.now();
+        this.enemyIdCounter = 0;
+        this.towerIdCounter = 0;
+        this.bulletIdCounter = 0;
         
-        // Заполняем колонку
-        for (let y = 0; y < CONFIG.WORLD_HEIGHT; y++) {
-            if (y > height + 5) {
-                // Камень глубоко под землёй
-                gameState.world[y][x] = 3;
-            } else if (y > height) {
-                // Земля
-                gameState.world[y][x] = 2;
-            } else if (y === height) {
-                // Трава на поверхности
-                gameState.world[y][x] = 1;
-                
-                // Иногда генерируем деревья
-                if (Math.random() < 0.1 && x > 5 && x < CONFIG.WORLD_WIDTH - 5) {
-                    generateTree(x, y - 1);
-                }
-            }
-            
-            // Добавляем пещеры
-            if (y > height + 3 && Math.random() < 0.05) {
-                generateCave(x, y);
-            }
-            
-            // Добавляем руды
-            if (y > height + 10 && Math.random() < 0.02) {
-                gameState.world[y][x] = 8; // Железо
-            }
-            if (y > height + 15 && Math.random() < 0.015) {
-                gameState.world[y][x] = 9; // Уголь
-            }
-        }
+        this.init();
     }
     
-    // Добавляем воду
-    for (let x = 0; x < CONFIG.WORLD_WIDTH; x++) {
-        for (let y = surfaceHeight + 1; y < surfaceHeight + 4; y++) {
-            if (Math.random() < 0.3) {
-                gameState.world[y][x] = 7; // Вода
-            }
-        }
+    init() {
+        this.initElements();
+        this.initPeerJS();
+        this.initEventListeners();
+        this.generateGameBoard();
+        this.generatePath();
+        this.gameLoop();
     }
     
-    // Добавляем начальных монстров
-    for (let i = 0; i < 5; i++) {
-        spawnMonster();
+    initElements() {
+        this.elements = {
+            playerStatus: document.getElementById('player-status'),
+            health: document.getElementById('health'),
+            money: document.getElementById('money'),
+            wave: document.getElementById('wave'),
+            opponentInfo: document.getElementById('opponent-info'),
+            gameBoard: document.getElementById('game-board'),
+            gameLog: document.getElementById('game-log'),
+            peerIdInput: document.getElementById('peer-id-input'),
+            connectBtn: document.getElementById('connect-btn'),
+            copyIdBtn: document.getElementById('copy-id-btn'),
+            startGameBtn: document.getElementById('start-game-btn'),
+            nextWaveBtn: document.getElementById('next-wave-btn'),
+            upgradeBtn: document.getElementById('upgrade-btn'),
+            sellBtn: document.getElementById('sell-btn'),
+            selectedTower: document.getElementById('selected-tower'),
+            enemyPreview: document.getElementById('enemy-preview'),
+            connectionModal: document.getElementById('connection-modal'),
+            yourPeerId: document.getElementById('your-peer-id'),
+            connectToId: document.getElementById('connect-to-id'),
+            modalConnect: document.getElementById('modal-connect'),
+            closeModal: document.getElementById('close-modal'),
+            copyModalId: document.getElementById('copy-modal-id')
+        };
+        
+        // ÐÐ¾ÐºÐ°Ð·ÑÐ²Ð°ÐµÐ¼ Ð¼Ð¾Ð´Ð°Ð»ÑÐ½Ð¾Ðµ Ð¾ÐºÐ½Ð¾ Ð¿ÑÐ¸ Ð·Ð°Ð³ÑÑÐ·ÐºÐµ
+        setTimeout(() => {
+            this.elements.connectionModal.style.display = 'flex';
+        }, 1000);
     }
-}
-
-function generateTree(x, y) {
-    const height = 4 + Math.floor(Math.random() * 3);
     
-    // Ствол
-    for (let i = 0; i < height; i++) {
-        if (y - i >= 0) {
-            gameState.world[y - i][x] = 4; // Дерево
-        }
-    }
-    
-    // Листва
-    const leavesY = y - height;
-    for (let dx = -2; dx <= 2; dx++) {
-        for (let dy = -2; dy <= 0; dy++) {
-            if (Math.abs(dx) + Math.abs(dy) <= 3) {
-                const tx = x + dx;
-                const ty = leavesY + dy;
-                if (tx >= 0 && tx < CONFIG.WORLD_WIDTH && ty >= 0) {
-                    gameState.world[ty][tx] = 5; // Листья
-                }
-            }
-        }
-    }
-}
-
-function generateCave(x, y) {
-    const radius = 2 + Math.floor(Math.random() * 3);
-    for (let dx = -radius; dx <= radius; dx++) {
-        for (let dy = -radius; dy <= radius; dy++) {
-            if (dx*dx + dy*dy <= radius*radius) {
-                const tx = x + dx;
-                const ty = y + dy;
-                if (tx >= 0 && tx < CONFIG.WORLD_WIDTH && ty >= 0 && ty < CONFIG.WORLD_HEIGHT) {
-                    gameState.world[ty][tx] = 0; // Воздух
-                }
-            }
-        }
-    }
-}
-
-function spawnMonster() {
-    const types = ['zombie', 'skeleton', 'slime', 'bat', 'spider'];
-    const type = types[Math.floor(Math.random() * types.length)];
-    
-    // Находим случайную позицию на поверхности
-    let x, y;
-    let attempts = 0;
-    
-    do {
-        x = Math.floor(Math.random() * CONFIG.WORLD_WIDTH * CONFIG.TILE_SIZE);
-        y = 100; // Стартовая высота
-        attempts++;
-    } while (attempts < 100 && !isValidSpawnPosition(x, y));
-    
-    if (attempts < 100) {
-        gameState.entities.push({
-            type: type,
-            x: x,
-            y: y,
-            vx: 0,
-            vy: 0,
-            width: ENTITY_TYPES[type].width,
-            height: ENTITY_TYPES[type].height,
-            health: ENTITY_TYPES[type].health,
-            damage: ENTITY_TYPES[type].damage,
-            speed: ENTITY_TYPES[type].speed,
-            facing: Math.random() > 0.5 ? 1 : -1,
-            aiState: 'idle',
-            aiTimer: 0
+    initPeerJS() {
+        // ÐÐ½Ð¸ÑÐ¸Ð°Ð»Ð¸Ð·Ð¸ÑÑÐµÐ¼ PeerJS Ñ Ð±ÐµÑÐ¿Ð»Ð°ÑÐ½ÑÐ¼ ÑÐµÑÐ²ÐµÑÐ¾Ð¼
+        this.peer = new Peer({
+            host: '0.peerjs.com',
+            port: 443,
+            path: '/',
+            pingInterval: 5000
+        });
+        
+        this.peer.on('open', (id) => {
+            this.peerId = id;
+            this.elements.playerStatus.textContent = `ID: ${id.substring(0, 8)}...`;
+            this.elements.yourPeerId.textContent = id;
+            this.elements.playerStatus.style.color = '#4CAF50';
+            this.addLog('ÐÐ¾Ð´ÐºÐ»ÑÑÐµÐ½Ð¾ Ðº ÑÐµÑÐ²ÐµÑÑ PeerJS');
+            this.addLog(`ÐÐ°Ñ ID: ${id}`);
+        });
+        
+        this.peer.on('connection', (connection) => {
+            this.addLog('ÐÐ¾Ð»ÑÑÐµÐ½ Ð·Ð°Ð¿ÑÐ¾Ñ Ð½Ð° Ð¿Ð¾Ð´ÐºÐ»ÑÑÐµÐ½Ð¸Ðµ...');
+            this.conn = connection;
+            this.opponentId = connection.peer;
+            this.setupConnection();
+        });
+        
+        this.peer.on('error', (err) => {
+            console.error('PeerJS Ð¾ÑÐ¸Ð±ÐºÐ°:', err);
+            this.addLog(`ÐÑÐ¸Ð±ÐºÐ°: ${err.type}`, 'error');
         });
     }
-}
-
-function isValidSpawnPosition(x, y) {
-    // Проверяем, есть ли твёрдая поверхность под монстром
-    const tileX = Math.floor(x / CONFIG.TILE_SIZE);
-    const tileY = Math.floor((y + 10) / CONFIG.TILE_SIZE);
     
-    if (tileX < 0 || tileX >= CONFIG.WORLD_WIDTH || tileY < 0 || tileY >= CONFIG.WORLD_HEIGHT) {
-        return false;
+    setupConnection() {
+        if (!this.conn) return;
+        
+        this.conn.on('open', () => {
+            this.addLog(`ÐÐ¾Ð´ÐºÐ»ÑÑÐµÐ½ Ðº ${this.opponentId.substring(0, 8)}...`);
+            this.elements.opponentInfo.textContent = `ÐÐ¿Ð¿Ð¾Ð½ÐµÐ½Ñ: ${this.opponentId.substring(0, 8)}...`;
+            this.elements.startGameBtn.disabled = false;
+            
+            // ÐÑÐ»Ð¸ Ð¼Ñ ÑÐ¾ÑÑ, Ð¾ÑÐ¿ÑÐ°Ð²Ð»ÑÐµÐ¼ Ð½Ð°ÑÐ°Ð»ÑÐ½Ð¾Ðµ ÑÐ¾ÑÑÐ¾ÑÐ½Ð¸Ðµ
+            if (this.isHost) {
+                this.sendGameState();
+            }
+        });
+        
+        this.conn.on('data', (data) => {
+            this.handleNetworkData(data);
+        });
+        
+        this.conn.on('close', () => {
+            this.addLog('Ð¡Ð¾ÐµÐ´Ð¸Ð½ÐµÐ½Ð¸Ðµ ÑÐ°Ð·Ð¾ÑÐ²Ð°Ð½Ð¾', 'error');
+            this.conn = null;
+            this.opponentId = null;
+            this.elements.startGameBtn.disabled = true;
+            this.elements.opponentInfo.textContent = 'ÐÐ¿Ð¿Ð¾Ð½ÐµÐ½Ñ: ÐÐµ Ð¿Ð¾Ð´ÐºÐ»ÑÑÐµÐ½';
+        });
     }
     
-    const tileBelow = gameState.world[tileY][tileX];
-    const tileAtPos = gameState.world[tileY - 1][tileX];
-    
-    return BLOCK_TYPES[tileBelow].solid && !BLOCK_TYPES[tileAtPos].solid;
-}
-
-// ==================== ОБРАБОТЧИКИ СОБЫТИЙ ====================
-function setupEventListeners() {
-    // Клавиатура
-    document.addEventListener('keydown', (e) => {
-        gameState.keys[e.key.toLowerCase()] = true;
-        
-        // Горячие клавиши инвентаря
-        if (e.key >= '1' && e.key <= '9') {
-            const slot = parseInt(e.key) - 1;
-            if (slot < gameState.player.hotbar.length) {
-                gameState.player.selectedSlot = slot;
-                updateHotbar();
-            }
-        }
-        
-        // Открытие инвентаря
-        if (e.key === 'e') {
-            toggleInventory();
-        }
-        
-        // Выбрасывание предмета
-        if (e.key === 'q') {
-            dropItem();
-        }
-        
-        // Пауза
-        if (e.key === 'Escape') {
-            togglePause();
-        }
-    });
-    
-    document.addEventListener('keyup', (e) => {
-        gameState.keys[e.key.toLowerCase()] = false;
-    });
-    
-    // Мышь
-    gameState.canvas.addEventListener('mousemove', (e) => {
-        const rect = gameState.canvas.getBoundingClientRect();
-        gameState.mouse.x = (e.clientX - rect.left) * (gameState.canvas.width / rect.width);
-        gameState.mouse.y = (e.clientY - rect.top) * (gameState.canvas.height / rect.height);
-    });
-    
-    gameState.canvas.addEventListener('mousedown', (e) => {
-        if (e.button === 0) {
-            gameState.mouse.down = true;
-            handleMouseClick();
-        } else if (e.button === 2) {
-            gameState.mouse.rightDown = true;
-            handleRightClick();
-        }
-    });
-    
-    gameState.canvas.addEventListener('mouseup', (e) => {
-        if (e.button === 0) {
-            gameState.mouse.down = false;
-        } else if (e.button === 2) {
-            gameState.mouse.rightDown = false;
-        }
-    });
-    
-    // Контекстное меню (отключаем)
-    gameState.canvas.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-    });
-    
-    // Сенсорное управление
-    gameState.canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        const touch = e.touches[0];
-        const rect = gameState.canvas.getBoundingClientRect();
-        const x = (touch.clientX - rect.left) * (gameState.canvas.width / rect.width);
-        const y = (touch.clientY - rect.top) * (gameState.canvas.height / rect.height);
-        
-        // Проверяем, находится ли касание в области джойстика
-        const joystickArea = document.getElementById('joystickArea');
-        const joystickRect = joystickArea.getBoundingClientRect();
-        
-        if (x < joystickRect.right && y > joystickRect.top) {
-            gameState.touch.joystick.active = true;
-            gameState.touch.joystick.startX = joystickRect.left + joystickRect.width / 2;
-            gameState.touch.joystick.startY = joystickRect.top + joystickRect.height / 2;
-            gameState.touch.joystick.x = 0;
-            gameState.touch.joystick.y = 0;
-        }
-    });
-    
-    gameState.canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        if (!gameState.touch.joystick.active) return;
-        
-        const touch = e.touches[0];
-        const rect = gameState.canvas.getBoundingClientRect();
-        const x = (touch.clientX - rect.left) * (gameState.canvas.width / rect.width);
-        const y = (touch.clientY - rect.top) * (gameState.canvas.height / rect.height);
-        
-        // Вычисляем смещение относительно центра джойстика
-        const dx = x - gameState.touch.joystick.startX;
-        const dy = y - gameState.touch.joystick.startY;
-        const distance = Math.sqrt(dx*dx + dy*dy);
-        const maxDistance = 40;
-        
-        if (distance > maxDistance) {
-            gameState.touch.joystick.x = (dx / distance) * maxDistance;
-            gameState.touch.joystick.y = (dy / distance) * maxDistance;
-        } else {
-            gameState.touch.joystick.x = dx;
-            gameState.touch.joystick.y = dy;
-        }
-        
-        // Обновляем позицию джойстика на экране
-        const joystick = document.getElementById('joystick');
-        joystick.style.transform = `translate(${gameState.touch.joystick.x}px, ${gameState.touch.joystick.y}px)`;
-    });
-    
-    gameState.canvas.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        gameState.touch.joystick.active = false;
-        gameState.touch.joystick.x = 0;
-        gameState.touch.joystick.y = 0;
-        
-        // Сбрасываем джойстик в центр
-        const joystick = document.getElementById('joystick');
-        joystick.style.transform = 'translate(-50%, -50%)';
-    });
-    
-    // Кнопки мобильного управления
-    document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        gameState.keys[' '] = true;
-    });
-    
-    document.getElementById('jumpBtn').addEventListener('touchend', (e) => {
-        e.preventDefault();
-        gameState.keys[' '] = false;
-    });
-    
-    document.getElementById('attackBtn').addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        handleMouseClick();
-    });
-    
-    document.getElementById('useBtn').addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        handleRightClick();
-    });
-    
-    document.getElementById('buildBtn').addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        toggleBuildMode();
-    });
-    
-    document.getElementById('inventoryBtn').addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        toggleInventory();
-    });
-    
-    // Кнопки интерфейса
-    document.getElementById('pauseBtn').addEventListener('click', togglePause);
-    document.getElementById('helpBtn').addEventListener('click', showHelp);
-    document.getElementById('multiplayerBtn').addEventListener('click', showMultiplayer);
-    
-    // Модальные окна
-    document.querySelectorAll('.close').forEach(closeBtn => {
-        closeBtn.addEventListener('click', () => {
-            closeBtn.closest('.modal').style.display = 'none';
+    initEventListeners() {
+        // ÐÐ¾Ð´ÐºÐ»ÑÑÐµÐ½Ð¸Ðµ
+        this.elements.connectBtn.addEventListener('click', () => this.connectToPeer());
+        this.elements.copyIdBtn.addEventListener('click', () => this.copyPeerId());
+        this.elements.startGameBtn.addEventListener('click', () => this.startGame());
+        this.elements.modalConnect.addEventListener('click', () => this.connectFromModal());
+        this.elements.closeModal.addEventListener('click', () => {
+            this.elements.connectionModal.style.display = 'none';
         });
-    });
-    
-    window.addEventListener('click', (e) => {
-        if (e.target.classList.contains('modal')) {
-            e.target.style.display = 'none';
-        }
-    });
-}
-
-function handleMouseClick() {
-    // Атака/копание
-    const worldX = gameState.mouse.x + gameState.camera.x;
-    const worldY = gameState.mouse.y + gameState.camera.y;
-    
-    // Проверяем, попали ли по монстру
-    for (let i = 0; i < gameState.entities.length; i++) {
-        const entity = gameState.entities[i];
-        if (entity.type === 'player') continue;
+        this.elements.copyModalId.addEventListener('click', () => {
+            navigator.clipboard.writeText(this.peerId);
+            this.addLog('ID ÑÐºÐ¾Ð¿Ð¸ÑÐ¾Ð²Ð°Ð½ Ð² Ð±ÑÑÐµÑ Ð¾Ð±Ð¼ÐµÐ½Ð°');
+        });
         
-        if (worldX > entity.x - entity.width/2 && worldX < entity.x + entity.width/2 &&
-            worldY > entity.y - entity.height && worldY < entity.y) {
-            
-            // Наносим урон
-            entity.health -= gameState.player.damage;
-            logEvent(`Атаковали ${entity.type}! Урон: ${gameState.player.damage}`);
-            
-            if (entity.health <= 0) {
-                // Монстр убит
-                gameState.entities.splice(i, 1);
-                gameState.stats.monstersKilled++;
-                logEvent(`Убили ${entity.type}!`);
-                
-                // Дроп предметов
-                const drops = ['meat', 'coal', 'iron'];
-                const drop = drops[Math.floor(Math.random() * drops.length)];
-                gameState.player.inventory[drop] = (gameState.player.inventory[drop] || 0) + 1;
-                updateInventory();
-                
-                // Спавним нового монстра
-                setTimeout(spawnMonster, 5000);
-            }
-            
-            // Создаём эффект попадания
-            createHitEffect(worldX, worldY);
+        // ÐÐ³ÑÐ¾Ð²ÑÐµ ÐºÐ¾Ð½ÑÑÐ¾Ð»Ñ
+        this.elements.nextWaveBtn.addEventListener('click', () => this.startNextWave());
+        this.elements.upgradeBtn.addEventListener('click', () => this.upgradeSelectedTower());
+        this.elements.sellBtn.addEventListener('click', () => this.sellSelectedTower());
+        
+        // ÐÑÐ±Ð¾Ñ ÑÐºÐ¾ÑÐ¾ÑÑÐ¸
+        document.getElementById('speed-1x').addEventListener('click', () => this.setGameSpeed(1));
+        document.getElementById('speed-2x').addEventListener('click', () => this.setGameSpeed(2));
+        document.getElementById('speed-3x').addEventListener('click', () => this.setGameSpeed(3));
+        
+        // ÐÑÐ±Ð¾Ñ Ð±Ð°ÑÐµÐ½
+        document.querySelectorAll('.tower-option').forEach(option => {
+            option.addEventListener('click', (e) => {
+                document.querySelectorAll('.tower-option').forEach(o => o.classList.remove('selected'));
+                e.currentTarget.classList.add('selected');
+                const type = e.currentTarget.dataset.type;
+                const cost = parseInt(e.currentTarget.dataset.cost);
+                this.gameState.selectedTower = { type, cost };
+                this.elements.selectedTower.textContent = type;
+            });
+        });
+        
+        // ÐÐ¾Ð±Ð¸Ð»ÑÐ½ÑÐµ ÐºÐ¾Ð½ÑÑÐ¾Ð»Ñ
+        document.getElementById('mobile-next-wave').addEventListener('click', () => this.startNextWave());
+        document.getElementById('mobile-upgrade').addEventListener('click', () => this.upgradeSelectedTower());
+        document.getElementById('mobile-sell').addEventListener('click', () => this.sellSelectedTower());
+    }
+    
+    connectToPeer() {
+        const opponentId = this.elements.peerIdInput.value.trim();
+        if (!opponentId) {
+            this.addLog('ÐÐ²ÐµÐ´Ð¸ÑÐµ ID Ð¾Ð¿Ð¿Ð¾Ð½ÐµÐ½ÑÐ°', 'error');
             return;
         }
+        
+        if (opponentId === this.peerId) {
+            this.addLog('ÐÐµÐ»ÑÐ·Ñ Ð¿Ð¾Ð´ÐºÐ»ÑÑÐ¸ÑÑÑÑ Ðº ÑÐµÐ±Ðµ', 'error');
+            return;
+        }
+        
+        this.connectToPeerId(opponentId);
     }
     
-    // Копание блока
-    const tileX = Math.floor(worldX / CONFIG.TILE_SIZE);
-    const tileY = Math.floor(worldY / CONFIG.TILE_SIZE);
-    
-    if (tileX >= 0 && tileX < CONFIG.WORLD_WIDTH && tileY >= 0 && tileY < CONFIG.WORLD_HEIGHT) {
-        const blockType = gameState.world[tileY][tileX];
-        const blockInfo = BLOCK_TYPES[blockType];
+    connectFromModal() {
+        const opponentId = this.elements.connectToId.value.trim();
+        if (!opponentId) {
+            this.addLog('ÐÐ²ÐµÐ´Ð¸ÑÐµ ID Ð¾Ð¿Ð¿Ð¾Ð½ÐµÐ½ÑÐ°', 'error');
+            return;
+        }
         
-        if (blockInfo.solid && blockInfo.health > 0) {
-            // Уменьшаем прочность блока
-            // В реальной игре здесь была бы система прочности
+        this.connectToPeerId(opponentId);
+        this.elements.connectionModal.style.display = 'none';
+    }
+    
+    connectToPeerId(peerId) {
+        this.addLog(`ÐÐ¾Ð´ÐºÐ»ÑÑÐ°ÐµÐ¼ÑÑ Ðº ${peerId.substring(0, 8)}...`);
+        this.conn = this.peer.connect(peerId);
+        this.opponentId = peerId;
+        this.isHost = false;
+        this.setupConnection();
+    }
+    
+    copyPeerId() {
+        if (!this.peerId) return;
+        navigator.clipboard.writeText(this.peerId);
+        this.addLog('ID ÑÐºÐ¾Ð¿Ð¸ÑÐ¾Ð²Ð°Ð½ Ð² Ð±ÑÑÐµÑ Ð¾Ð±Ð¼ÐµÐ½Ð°');
+    }
+    
+    startGame() {
+        if (!this.conn) return;
+        
+        this.gameState.gameStarted = true;
+        this.addLog('ÐÐ³ÑÐ° Ð½Ð°ÑÐ°Ð»Ð°ÑÑ!', 'success');
+        this.elements.startGameBtn.disabled = true;
+        
+        if (this.isHost) {
+            this.sendNetworkMessage({ type: 'game_start' });
+            this.startNextWave();
+        }
+    }
+    
+    generateGameBoard() {
+        this.elements.gameBoard.innerHTML = '';
+        const rows = 8;
+        const cols = 12;
+        
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.row = row;
+                cell.dataset.col = col;
+                
+                cell.addEventListener('click', () => this.placeTower(row, col));
+                
+                this.elements.gameBoard.appendChild(cell);
+            }
+        }
+    }
+    
+    generatePath() {
+        // ÐÐµÐ½ÐµÑÐ¸ÑÑÐµÐ¼ ÑÐ»ÑÑÐ°Ð¹Ð½ÑÐ¹ Ð¿ÑÑÑ Ð´Ð»Ñ Ð²ÑÐ°Ð³Ð¾Ð²
+        this.gameState.path = [
+            { row: 0, col: 5 },
+            { row: 2, col: 5 },
+            { row: 2, col: 8 },
+            { row: 5, col: 8 },
+            { row: 5, col: 3 },
+            { row: 7, col: 3 }
+        ];
+        
+        // ÐÑÐ¼ÐµÑÐ°ÐµÐ¼ Ð¿ÑÑÑ Ð½Ð° Ð¿Ð¾Ð»Ðµ
+        this.gameState.path.forEach((pos, index) => {
+            const cell = document.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
+            if (cell) {
+                cell.classList.add('path');
+                if (index === 0) cell.classList.add('start');
+                if (index === this.gameState.path.length - 1) cell.classList.add('end');
+            }
+        });
+    }
+    
+    placeTower(row, col) {
+        if (!this.gameState.gameStarted || !this.gameState.selectedTower) return;
+        
+        // ÐÑÐ¾Ð²ÐµÑÑÐµÐ¼, Ð¼Ð¾Ð¶Ð½Ð¾ Ð»Ð¸ Ð¿Ð¾ÑÑÐ°Ð²Ð¸ÑÑ Ð±Ð°ÑÐ½Ñ
+        const isPath = this.gameState.path.some(pos => pos.row === row && pos.col === col);
+        if (isPath) {
+            this.addLog('ÐÐµÐ»ÑÐ·Ñ ÑÑÐ°Ð²Ð¸ÑÑ Ð±Ð°ÑÐ½Ñ Ð½Ð° Ð¿ÑÑÐ¸', 'error');
+            return;
+        }
+        
+        const existingTower = this.gameState.towers.find(t => t.row === row && t.col === col);
+        if (existingTower) {
+            this.addLog('ÐÐ´ÐµÑÑ ÑÐ¶Ðµ ÐµÑÑÑ Ð±Ð°ÑÐ½Ñ', 'error');
+            return;
+        }
+        
+        if (this.gameState.money < this.gameState.selectedTower.cost) {
+            this.addLog('ÐÐµÐ´Ð¾ÑÑÐ°ÑÐ¾ÑÐ½Ð¾ Ð´ÐµÐ½ÐµÐ³', 'error');
+            return;
+        }
+        
+        // Ð¡Ð¾Ð·Ð´Ð°ÐµÐ¼ Ð±Ð°ÑÐ½Ñ
+        const tower = {
+            id: this.towerIdCounter++,
+            type: this.gameState.selectedTower.type,
+            row,
+            col,
+            level: 1,
+            damage: this.getTowerDamage(this.gameState.selectedTower.type),
+            range: this.getTowerRange(this.gameState.selectedTower.type),
+            cooldown: 0,
+            lastShot: 0,
+            splashRadius: this.gameState.selectedTower.type === 'splash' ? 2 : 0,
+            slowAmount: this.gameState.selectedTower.type === 'slow' ? 0.5 : 0
+        };
+        
+        this.gameState.towers.push(tower);
+        this.gameState.money -= this.gameState.selectedTower.cost;
+        this.updateUI();
+        
+        // ÐÑÐ¾Ð±ÑÐ°Ð¶Ð°ÐµÐ¼ Ð±Ð°ÑÐ½Ñ
+        this.renderTower(tower);
+        
+        // ÐÑÐ¿ÑÐ°Ð²Ð»ÑÐµÐ¼ Ð¾Ð¿Ð¿Ð¾Ð½ÐµÐ½ÑÑ
+        this.sendNetworkMessage({
+            type: 'place_tower',
+            tower: tower
+        });
+        
+        this.addLog(`ÐÐ¾ÑÑÐ°Ð²Ð»ÐµÐ½Ð° ${tower.type} Ð±Ð°ÑÐ½Ñ Ð½Ð° (${row}, ${col})`);
+    }
+    
+    renderTower(tower) {
+        const cell = document.querySelector(`.cell[data-row="${tower.row}"][data-col="${tower.col}"]`);
+        if (!cell) return;
+        
+        const towerDiv = document.createElement('div');
+        towerDiv.className = 'tower-placed';
+        towerDiv.id = `tower-${tower.id}`;
+        towerDiv.style.background = this.getTowerColor(tower.type);
+        towerDiv.textContent = tower.type.charAt(0).toUpperCase();
+        towerDiv.title = `Ð£ÑÐ¾Ð²ÐµÐ½Ñ ${tower.level}\nÐ£ÑÐ¾Ð½: ${tower.damage}`;
+        
+        cell.appendChild(towerDiv);
+        cell.classList.add('tower');
+    }
+    
+    getTowerColor(type) {
+        const colors = {
+            basic: 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)',
+            sniper: 'linear-gradient(135deg, #2196F3 0%, #0D47A1 100%)',
+            splash: 'linear-gradient(135deg, #FF9800 0%, #EF6C00 100%)',
+            slow: 'linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%)'
+        };
+        return colors[type] || colors.basic;
+    }
+    
+    getTowerDamage(type) {
+        const damages = { basic: 10, sniper: 25, splash: 15, slow: 5 };
+        return damages[type] || 10;
+    }
+    
+    getTowerRange(type) {
+        const ranges = { basic: 3, sniper: 6, splash: 3, slow: 3 };
+        return ranges[type] || 3;
+    }
+    
+    startNextWave() {
+        if (!this.gameState.gameStarted) return;
+        
+        this.gameState.wave++;
+        this.elements.wave.textContent = this.gameState.wave;
+        
+        // Ð¡Ð¾Ð·Ð´Ð°ÐµÐ¼ Ð²ÑÐ°Ð³Ð¾Ð² Ð´Ð»Ñ Ð²Ð¾Ð»Ð½Ñ
+        const enemyCount = 5 + this.gameState.wave * 2;
+        const enemyTypes = ['basic', 'fast', 'tank'];
+        
+        for (let i = 0; i < enemyCount; i++) {
+            const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+            this.spawnEnemy(type);
+        }
+        
+        this.addLog(`ÐÐ°ÑÐ¸Ð½Ð°ÐµÑÑÑ Ð²Ð¾Ð»Ð½Ð° ${this.gameState.wave}!`);
+        this.updateEnemyPreview();
+        
+        // ÐÑÐ¿ÑÐ°Ð²Ð»ÑÐµÐ¼ Ð¾Ð¿Ð¿Ð¾Ð½ÐµÐ½ÑÑ
+        if (this.isHost) {
+            this.sendNetworkMessage({ type: 'next_wave', wave: this.gameState.wave });
+        }
+    }
+    
+    spawnEnemy(type) {
+        const enemy = {
+            id: this.enemyIdCounter++,
+            type,
+            position: 0,
+            row: this.gameState.path[0].row,
+            col: this.gameState.path[0].col,
+            health: this.getEnemyHealth(type),
+            maxHealth: this.getEnemyHealth(type),
+            speed: this.getEnemySpeed(type),
+            reward: this.getEnemyReward(type)
+        };
+        
+        this.gameState.enemies.push(enemy);
+        this.renderEnemy(enemy);
+    }
+    
+    getEnemyHealth(type) {
+        const health = { basic: 50, fast: 30, tank: 150 };
+        return health[type] || 50;
+    }
+    
+    getEnemySpeed(type) {
+        const speeds = { basic: 1, fast: 2, tank: 0.7 };
+        return speeds[type] || 1;
+    }
+    
+    getEnemyReward(type) {
+        const rewards = { basic: 10, fast: 15, tank: 25 };
+        return rewards[type] || 10;
+    }
+    
+    renderEnemy(enemy) {
+        const cell = document.querySelector(`.cell[data-row="${enemy.row}"][data-col="${enemy.col}"]`);
+        if (!cell) return;
+        
+        const enemyDiv = document.createElement('div');
+        enemyDiv.className = 'enemy';
+        enemyDiv.id = `enemy-${enemy.id}`;
+        enemyDiv.style.background = this.getEnemyColor(enemy.type);
+        enemyDiv.textContent = enemy.type === 'tank' ? 'T' : enemy.type === 'fast' ? 'F' : 'E';
+        
+        // Health bar
+        const healthBar = document.createElement('div');
+        healthBar.style.position = 'absolute';
+        healthBar.style.bottom = '-5px';
+        healthBar.style.left = '5%';
+        healthBar.style.width = '90%';
+        healthBar.style.height = '3px';
+        healthBar.style.background = '#f44336';
+        healthBar.style.borderRadius = '2px';
+        healthBar.id = `enemy-health-${enemy.id}`;
+        
+        enemyDiv.appendChild(healthBar);
+        cell.appendChild(enemyDiv);
+    }
+    
+    getEnemyColor(type) {
+        const colors = {
+            basic: 'linear-gradient(135deg, #f44336 0%, #c62828 100%)',
+            fast: 'linear-gradient(135deg, #FF9800 0%, #EF6C00 100%)',
+            tank: 'linear-gradient(135deg, #795548 0%, #4E342E 100%)'
+        };
+        return colors[type] || colors.basic;
+    }
+    
+    updateEnemyPreview() {
+        this.elements.enemyPreview.innerHTML = '';
+        const enemyTypes = ['basic', 'fast', 'tank'];
+        
+        enemyTypes.forEach(type => {
+            const count = Math.floor((5 + this.gameState.wave) / enemyTypes.length);
+            for (let i = 0; i < count; i++) {
+                const enemyDiv = document.createElement('div');
+                enemyDiv.className = 'enemy-preview-item';
+                enemyDiv.style.background = this.getEnemyColor(type);
+                enemyDiv.textContent = type === 'tank' ? 'T' : type === 'fast' ? 'F' : 'E';
+                this.elements.enemyPreview.appendChild(enemyDiv);
+            }
+        });
+    }
+    
+    gameLoop() {
+        const now = Date.now();
+        const deltaTime = (now - this.lastUpdate) * this.gameSpeed / 1000;
+        this.lastUpdate = now;
+        
+        if (this.gameState.gameStarted) {
+            this.updateEnemies(deltaTime);
+            this.updateTowers(deltaTime);
+            this.updateBullets(deltaTime);
+            this.checkGameOver();
+        }
+        
+        requestAnimationFrame(() => this.gameLoop());
+    }
+    
+    updateEnemies(deltaTime) {
+        this.gameState.enemies.forEach(enemy => {
+            enemy.position += enemy.speed * deltaTime * 0.1;
             
-            // Удаляем блок
-            gameState.world[tileY][tileX] = 0;
-            gameState.stats.blocksBroken++;
-            
-            // Добавляем предмет в инвентарь
-            if (blockInfo.drop) {
-                gameState.player.inventory[blockInfo.drop] = 
-                    (gameState.player.inventory[blockInfo.drop] || 0) + 1;
-                updateInventory();
-                logEvent(`Добыли ${blockInfo.drop}!`);
+            const pathIndex = Math.floor(enemy.position);
+            if (pathIndex < this.gameState.path.length - 1) {
+                const currentPos = this.gameState.path[pathIndex];
+                const nextPos = this.gameState.path[pathIndex + 1];
+                const progress = enemy.position - pathIndex;
+                
+                enemy.row = currentPos.row + (nextPos.row - currentPos.row) * progress;
+                enemy.col = currentPos.col + (nextPos.col - currentPos.col) * progress;
+            } else {
+                // ÐÑÐ°Ð³ Ð´Ð¾ÑÐµÐ» Ð´Ð¾ ÐºÐ¾Ð½ÑÐ°
+                this.gameState.health -= 10;
+                this.removeEnemy(enemy.id);
+                this.updateUI();
+                this.addLog('ÐÑÐ°Ð³ Ð¿ÑÐ¾ÑÐµÐ»! -10 HP', 'error');
+                return;
             }
             
-            // Создаём эффект разрушения
-            createBlockBreakEffect(tileX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE/2, 
-                                 tileY * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE/2);
-        }
+            // ÐÐ±Ð½Ð¾Ð²Ð»ÑÐµÐ¼ Ð¿Ð¾Ð·Ð¸ÑÐ¸Ñ Ð½Ð° ÑÐºÑÐ°Ð½Ðµ
+            this.updateEnemyPosition(enemy);
+        });
     }
-}
-
-function handleRightClick() {
-    // Использование/установка блока
-    const worldX = gameState.mouse.x + gameState.camera.x;
-    const worldY = gameState.mouse.y + gameState.camera.y;
     
-    const tileX = Math.floor(worldX / CONFIG.TILE_SIZE);
-    const tileY = Math.floor(worldY / CONFIG.TILE_SIZE);
-    
-    if (tileX >= 0 && tileX < CONFIG.WORLD_WIDTH && tileY >= 0 && tileY < CONFIG.WORLD_HEIGHT) {
-        const selectedItem = gameState.player.hotbar[gameState.player.selectedSlot];
+    updateEnemyPosition(enemy) {
+        const enemyDiv = document.getElementById(`enemy-${enemy.id}`);
+        if (!enemyDiv) return;
         
-        if (selectedItem && ITEMS[selectedItem] && ITEMS[selectedItem].placeable) {
-            // Проверяем, можно ли установить блок здесь
-            if (gameState.world[tileY][tileX] === 0) {
-                // Устанавливаем блок
-                gameState.world[tileY][tileX] = ITEMS[selectedItem].placeable;
-                
-                // Убираем предмет из инвентаря
-                gameState.player.inventory[selectedItem]--;
-                if (gameState.player.inventory[selectedItem] <= 0) {
-                    delete gameState.player.inventory[selectedItem];
-                }
-                
-                updateInventory();
-                logEvent(`Установили блок ${ITEMS[selectedItem].name}`);
-                
-                // Создаём эффект установки
-                createPlaceEffect(tileX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE/2, 
-                                tileY * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE/2);
-            }
-        } else if (selectedItem === 'apple' || selectedItem === 'meat') {
-            // Использование еды
-            useFood(selectedItem);
-        } else if (selectedItem === 'health_potion') {
-            // Использование зелья
-            usePotion();
-        }
-    }
-}
-
-// ==================== ИГРОВАЯ ЛОГИКА ====================
-function updatePlayer(deltaTime) {
-    const player = gameState.player;
-    
-    // Управление
-    let moveX = 0;
-    
-    if (gameState.deviceType === 'desktop') {
-        if (gameState.keys['a'] || gameState.keys['arrowleft']) moveX -= 1;
-        if (gameState.keys['d'] || gameState.keys['arrowright']) moveX += 1;
+        const cell = document.querySelector(`.cell[data-row="${Math.floor(enemy.row)}"][data-col="${Math.floor(enemy.col)}"]`);
+        if (!cell) return;
         
-        if ((gameState.keys[' '] || gameState.keys['w'] || gameState.keys['arrowup']) && player.onGround) {
-            player.vy = CONFIG.PLAYER_JUMP_FORCE;
-            player.onGround = false;
-            player.jumping = true;
+        const rect = cell.getBoundingClientRect();
+        const boardRect = this.elements.gameBoard.getBoundingClientRect();
+        
+        const x = (rect.left - boardRect.left + rect.width / 2) + (enemy.col % 1) * rect.width;
+        const y = (rect.top - boardRect.top + rect.height / 2) + (enemy.row % 1) * rect.height;
+        
+        enemyDiv.style.left = `${x - 20}px`;
+        enemyDiv.style.top = `${y - 20}px`;
+        
+        // ÐÐ±Ð½Ð¾Ð²Ð»ÑÐµÐ¼ health bar
+        const healthBar = document.getElementById(`enemy-health-${enemy.id}`);
+        if (healthBar) {
+            const healthPercent = (enemy.health / enemy.maxHealth) * 90;
+            healthBar.style.width = `${healthPercent}%`;
         }
-    } else {
-        // Мобильное управление через джойстик
-        if (gameState.touch.joystick.active) {
-            moveX = gameState.touch.joystick.x / 40; // Нормализуем
-        }
     }
     
-    // Применяем движение
-    player.vx = moveX * player.speed;
-    player.x += player.vx;
-    
-    // Гравитация
-    player.vy += CONFIG.GRAVITY;
-    player.y += player.vy;
-    
-    // Ограничение максимальной скорости падения
-    if (player.vy > 20) player.vy = 20;
-    
-    // Коллизии с миром
-    handleWorldCollisions(player);
-    
-    // Обновление направления взгляда
-    if (moveX !== 0) {
-        player.facing = moveX > 0 ? 1 : -1;
-    }
-    
-    // Обновление статистики
-    gameState.stats.distanceTraveled += Math.abs(player.vx) * deltaTime;
-    
-    // Обновление голода
-    player.hunger -= 0.1 * deltaTime;
-    if (player.hunger < 0) player.hunger = 0;
-    
-    // Голод наносит урон
-    if (player.hunger <= 0) {
-        player.health -= 0.5 * deltaTime;
-        if (player.health < 0) player.health = 0;
-    }
-    
-    // Авто-регенерация здоровья
-    if (player.hunger > 50 && player.health < player.maxHealth) {
-        player.health += 0.1 * deltaTime;
-        if (player.health > player.maxHealth) player.health = player.maxHealth;
-    }
-    
-    // Проверка смерти
-    if (player.health <= 0) {
-        logEvent('Вы погибли! Возрождение...');
-        player.health = player.maxHealth;
-        player.hunger = player.maxHunger;
-        player.x = 500;
-        player.y = 300;
-    }
-    
-    // Обновление камеры
-    updateCamera();
-}
-
-function handleWorldCollisions(entity) {
-    // Определяем границы сущности в тайлах
-    const leftTile = Math.floor((entity.x - entity.width/2) / CONFIG.TILE_SIZE);
-    const rightTile = Math.floor((entity.x + entity.width/2 - 1) / CONFIG.TILE_SIZE);
-    const topTile = Math.floor((entity.y - entity.height) / CONFIG.TILE_SIZE);
-    const bottomTile = Math.floor((entity.y - 1) / CONFIG.TILE_SIZE);
-    
-    // Сбрасываем состояние "на земле"
-    entity.onGround = false;
-    
-    // Проверяем коллизии с каждым тайлом в области
-    for (let y = topTile; y <= bottomTile; y++) {
-        for (let x = leftTile; x <= rightTile; x++) {
-            if (x < 0 || x >= CONFIG.WORLD_WIDTH || y < 0 || y >= CONFIG.WORLD_HEIGHT) {
-                continue;
+    updateTowers(deltaTime) {
+        this.gameState.towers.forEach(tower => {
+            tower.cooldown -= deltaTime;
+            if (tower.cooldown <= 0) {
+                this.towerAttack(tower);
+                tower.cooldown = this.getTowerCooldown(tower.type);
             }
+        });
+    }
+    
+    getTowerCooldown(type) {
+        const cooldowns = { basic: 1, sniper: 2, splash: 1.5, slow: 0.8 };
+        return cooldowns[type] || 1;
+    }
+    
+    towerAttack(tower) {
+        // ÐÐ°ÑÐ¾Ð´Ð¸Ð¼ Ð±Ð»Ð¸Ð¶Ð°Ð¹ÑÐµÐ³Ð¾ Ð²ÑÐ°Ð³Ð° Ð² ÑÐ°Ð´Ð¸ÑÑÐµ
+        const enemy = this.findEnemyInRange(tower);
+        if (!enemy) return;
+        
+        // Ð¡Ð¾Ð·Ð´Ð°ÐµÐ¼ Ð¿ÑÐ»Ñ
+        const bullet = {
+            id: this.bulletIdCounter++,
+            from: { row: tower.row + 0.5, col: tower.col + 0.5 },
+            to: { row: enemy.row, col: enemy.col },
+            progress: 0,
+            damage: tower.damage,
+            towerId: tower.id,
+            enemyId: enemy.id,
+            splashRadius: tower.splashRadius,
+            slowAmount: tower.slowAmount
+        };
+        
+        this.gameState.bullets.push(bullet);
+        this.renderBullet(bullet);
+    }
+    
+    findEnemyInRange(tower) {
+        let closestEnemy = null;
+        let closestDistance = Infinity;
+        
+        this.gameState.enemies.forEach(enemy => {
+            const distance = Math.sqrt(
+                Math.pow(enemy.row - tower.row, 2) + Math.pow(enemy.col - tower.col, 2)
+            );
             
-            const blockType = gameState.world[y][x];
-            const blockInfo = BLOCK_TYPES[blockType];
+            if (distance <= tower.range && distance < closestDistance) {
+                closestDistance = distance;
+                closestEnemy = enemy;
+            }
+        });
+        
+        return closestEnemy;
+    }
+    
+    renderBullet(bullet) {
+        const bulletDiv = document.createElement('div');
+        bulletDiv.className = 'bullet';
+        bulletDiv.id = `bullet-${bullet.id}`;
+        
+        if (bullet.splashRadius > 0) {
+            bulletDiv.style.background = '#FF9800';
+            bulletDiv.style.width = '15px';
+            bulletDiv.style.height = '15px';
+        }
+        
+        this.elements.gameBoard.appendChild(bulletDiv);
+        this.updateBulletPosition(bullet);
+    }
+    
+    updateBulletPosition(bullet) {
+        const bulletDiv = document.getElementById(`bullet-${bullet.id}`);
+        if (!bulletDiv) return;
+        
+        const x = bullet.from.col + (bullet.to.col - bullet.from.col) * bullet.progress;
+        const y = bullet.from.row + (bullet.to.row - bullet.from.row) * bullet.progress;
+        
+        const cell = document.querySelector(`.cell[data-row="${Math.floor(y)}"][data-col="${Math.floor(x)}"]`);
+        if (!cell) return;
+        
+        const rect = cell.getBoundingClientRect();
+        const boardRect = this.elements.gameBoard.getBoundingClientRect();
+        
+        bulletDiv.style.left = `${rect.left - boardRect.left + (x % 1) * rect.width - 5}px`;
+        bulletDiv.style.top = `${rect.top - boardRect.top + (y % 1) * rect.height - 5}px`;
+    }
+    
+    updateBullets(deltaTime) {
+        this.gameState.bullets.forEach((bullet, index) => {
+            bullet.progress += deltaTime * 3;
+            this.updateBulletPosition(bullet);
             
-            if (blockInfo.solid) {
-                // Вычисляем пересечение
-                const tileLeft = x * CONFIG.TILE_SIZE;
-                const tileRight = tileLeft + CONFIG.TILE_SIZE;
-                const tileTop = y * CONFIG.TILE_SIZE;
-                const tileBottom = tileTop + CONFIG.TILE_SIZE;
-                
-                const entityLeft = entity.x - entity.width/2;
-                const entityRight = entity.x + entity.width/2;
-                const entityTop = entity.y - entity.height;
-                const entityBottom = entity.y;
-                
-                // Определяем глубину пересечения по каждой оси
-                const overlapX = Math.min(entityRight - tileLeft, tileRight - entityLeft);
-                const overlapY = Math.min(entityBottom - tileTop, tileBottom - entityTop);
-                
-                // Решаем коллизию по наименьшему пересечению
-                if (overlapX < overlapY) {
-                    // Коллизия по X
-                    if (entityLeft < tileLeft) {
-                        entity.x = tileLeft - entity.width/2;
+            if (bullet.progress >= 1) {
+                // ÐÐ¾Ð¿Ð°Ð´Ð°Ð½Ð¸Ðµ
+                const enemy = this.gameState.enemies.find(e => e.id === bullet.enemyId);
+                if (enemy) {
+                    if (bullet.splashRadius > 0) {
+                        // Ð¡Ð¿Ð»ÑÑ ÑÑÐ¾Ð½
+                        this.gameState.enemies.forEach(e => {
+                            const distance = Math.sqrt(
+                                Math.pow(e.row - enemy.row, 2) + Math.pow(e.col - enemy.col, 2)
+                            );
+                            if (distance <= bullet.splashRadius) {
+                                e.health -= bullet.damage * (1 - distance / bullet.splashRadius);
+                                if (e.health <= 0) {
+                                    this.gameState.money += e.reward;
+                                    this.removeEnemy(e.id);
+                                }
+                            }
+                        });
                     } else {
-                        entity.x = tileRight + entity.width/2;
-                    }
-                    entity.vx = 0;
-                } else {
-                    // Коллизия по Y
-                    if (entityTop < tileTop) {
-                        entity.y = tileTop - 0.1;
-                        entity.vy = 0;
-                    } else {
-                        entity.y = tileBottom + entity.height;
-                        entity.vy = 0;
-                        entity.onGround = true;
-                        entity.jumping = false;
+                        // ÐÐ´Ð¸Ð½Ð¾ÑÐ½ÑÐ¹ ÑÑÐ¾Ð½
+                        enemy.health -= bullet.damage;
+                        
+                        if (bullet.slowAmount > 0) {
+                            enemy.speed *= (1 - bullet.slowAmount);
+                        }
+                        
+                        if (enemy.health <= 0) {
+                            this.gameState.money += enemy.reward;
+                            this.removeEnemy(enemy.id);
+                        }
                     }
                 }
+                
+                // Ð£Ð´Ð°Ð»ÑÐµÐ¼ Ð¿ÑÐ»Ñ
+                const bulletDiv = document.getElementById(`bullet-${bullet.id}`);
+                if (bulletDiv) bulletDiv.remove();
+                this.gameState.bullets.splice(index, 1);
             }
+        });
+    }
+    
+    removeEnemy(enemyId) {
+        const enemyDiv = document.getElementById(`enemy-${enemyId}`);
+        if (enemyDiv) enemyDiv.remove();
+        
+        const index = this.gameState.enemies.findIndex(e => e.id === enemyId);
+        if (index !== -1) {
+            this.gameState.enemies.splice(index, 1);
         }
     }
-}
-
-function updateEntities(deltaTime) {
-    // Обновляем монстров
-    for (let i = gameState.entities.length - 1; i >= 0; i--) {
-        const entity = gameState.entities[i];
-        if (entity.type === 'player') continue;
+    
+    upgradeSelectedTower() {
+        // Ð ÐµÐ°Ð»Ð¸Ð·Ð°ÑÐ¸Ñ ÑÐ»ÑÑÑÐµÐ½Ð¸Ñ Ð±Ð°ÑÐ½Ð¸
+        this.addLog('Ð¤ÑÐ½ÐºÑÐ¸Ñ ÑÐ»ÑÑÑÐµÐ½Ð¸Ñ Ð² ÑÐ°Ð·ÑÐ°Ð±Ð¾ÑÐºÐµ');
+    }
+    
+    sellSelectedTower() {
+        // Ð ÐµÐ°Ð»Ð¸Ð·Ð°ÑÐ¸Ñ Ð¿ÑÐ¾Ð´Ð°Ð¶Ð¸ Ð±Ð°ÑÐ½Ð¸
+        this.addLog('Ð¤ÑÐ½ÐºÑÐ¸Ñ Ð¿ÑÐ¾Ð´Ð°Ð¶Ð¸ Ð² ÑÐ°Ð·ÑÐ°Ð±Ð¾ÑÐºÐµ');
+    }
+    
+    setGameSpeed(speed) {
+        this.gameSpeed = speed;
         
-        // Простой AI
-        entity.aiTimer += deltaTime;
+        // ÐÐ±Ð½Ð¾Ð²Ð»ÑÐµÐ¼ ÐºÐ½Ð¾Ð¿ÐºÐ¸
+        document.querySelectorAll('.game-speed button').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`speed-${speed}x`).classList.add('active');
+    }
+    
+    checkGameOver() {
+        if (this.gameState.health <= 0) {
+            this.addLog('ÐÐ³ÑÐ° Ð¾ÐºÐ¾Ð½ÑÐµÐ½Ð°! ÐÑ Ð¿ÑÐ¾Ð¸Ð³ÑÐ°Ð»Ð¸.', 'error');
+            this.gameState.gameStarted = false;
+        }
+    }
+    
+    updateUI() {
+        this.elements.health.textContent = `â¤ï¸ ${this.gameState.health}`;
+        this.elements.money.textContent = `ð° ${this.gameState.money}`;
+    }
+    
+    addLog(message, type = 'info') {
+        const logEntry = document.createElement('p');
+        logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
         
-        switch (entity.aiState) {
-            case 'idle':
-                if (entity.aiTimer > 2000) {
-                    entity.aiState = 'wander';
-                    entity.aiTimer = 0;
-                    entity.facing = Math.random() > 0.5 ? 1 : -1;
-                }
+        if (type === 'error') {
+            logEntry.style.color = '#f44336';
+        } else if (type === 'success') {
+            logEntry.style.color = '#4CAF50';
+        }
+        
+        this.elements.gameLog.appendChild(logEntry);
+        this.elements.gameLog.scrollTop = this.elements.gameLog.scrollHeight;
+    }
+    
+    sendNetworkMessage(data) {
+        if (this.conn && this.conn.open) {
+            this.conn.send(data);
+        }
+    }
+    
+    sendGameState() {
+        this.sendNetworkMessage({
+            type: 'game_state',
+            state: this.gameState
+        });
+    }
+    
+    handleNetworkData(data) {
+        switch (data.type) {
+            case 'game_start':
+                this.gameState.gameStarted = true;
+                this.addLog('Ð¥Ð¾ÑÑ Ð½Ð°ÑÐ°Ð» Ð¸Ð³ÑÑ!', 'success');
                 break;
                 
-            case 'wander':
-                entity.vx = entity.facing * entity.speed;
-                
-                // Проверяем, не упал ли монстр с обрыва
-                const nextTileX = Math.floor((entity.x + entity.facing * 20) / CONFIG.TILE_SIZE);
-                const tileY = Math.floor((entity.y + 10) / CONFIG.TILE_SIZE);
-                
-                if (nextTileX < 0 || nextTileX >= CONFIG.WORLD_WIDTH || 
-                    !BLOCK_TYPES[gameState.world[tileY][nextTileX]].solid) {
-                    entity.facing *= -1;
-                }
-                
-                if (entity.aiTimer > 3000) {
-                    entity.aiState = 'idle';
-                    entity.aiTimer = 0;
-                    entity.vx = 0;
-                }
-                break;
-        }
-        
-        // Гравитация для монстров
-        entity.vy += CONFIG.GRAVITY;
-        entity.x += entity.vx;
-        entity.y += entity.vy;
-        
-        // Коллизии с миром
-        handleWorldCollisions(entity);
-        
-        // Проверяем столкновение с игроком
-        const dx = entity.x - gameState.player.x;
-        const dy = entity.y - gameState.player.y;
-        const distance = Math.sqrt(dx*dx + dy*dy);
-        
-        if (distance < 50 && entity.aiTimer > 1000) {
-            // Атака игрока
-            gameState.player.health -= entity.damage;
-            logEvent(`${entity.type} атаковал вас! -${entity.damage} HP`);
-            entity.aiTimer = 0;
-            
-            // Отбрасывание игрока
-            gameState.player.vx = Math.sign(dx) * 10;
-            gameState.player.vy = -5;
-        }
-        
-        // Проверяем здоровье монстра
-        if (entity.health <= 0) {
-            gameState.entities.splice(i, 1);
-            gameState.stats.monstersKilled++;
-            spawnMonster(); // Спавним нового монстра
-        }
-    }
-    
-    // Спавн новых монстров в зависимости от времени суток
-    const spawnRate = gameState.time.isDay ? CONFIG.DAY_MONSTER_SPAWN_RATE : CONFIG.NIGHT_MONSTER_SPAWN_RATE;
-    if (Math.random() < spawnRate * deltaTime) {
-        spawnMonster();
-    }
-}
-
-function updateCamera() {
-    const player = gameState.player;
-    const camera = gameState.camera;
-    
-    // Плавное слежение за игроком
-    camera.x += (player.x - camera.x - camera.width/2) * 0.1;
-    camera.y += (player.y - camera.y - camera.height/2) * 0.1;
-    
-    // Ограничиваем камеру границами мира
-    const worldWidthPx = CONFIG.WORLD_WIDTH * CONFIG.TILE_SIZE;
-    const worldHeightPx = CONFIG.WORLD_HEIGHT * CONFIG.TILE_SIZE;
-    
-    camera.x = Math.max(0, Math.min(camera.x, worldWidthPx - camera.width));
-    camera.y = Math.max(0, Math.min(camera.y, worldHeightPx - camera.height));
-}
-
-function updateTime(deltaTime) {
-    gameState.time.timeOfDay += deltaTime / CONFIG.DAY_LENGTH;
-    
-    if (gameState.time.timeOfDay >= 1) {
-        gameState.time.timeOfDay = 0;
-        gameState.time.day++;
-        logEvent(`Наступил день ${gameState.time.day}!`);
-    }
-    
-    gameState.time.isDay = gameState.time.timeOfDay < 0.5;
-    
-    // Обновляем отображение времени
-    const timeElement = document.getElementById('time');
-    timeElement.textContent = gameState.time.isDay ? 'День' : 'Ночь';
-    
-    const dayElement = document.getElementById('day');
-    dayElement.textContent = gameState.time.day;
-}
-
-// ==================== ОТРИСОВКА ====================
-function render() {
-    const ctx = gameState.ctx;
-    const camera = gameState.camera;
-    
-    // Очищаем canvas
-    ctx.fillStyle = gameState.time.isDay ? '#87CEEB' : '#191970';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    
-    // Рисуем фон (параллакс)
-    drawBackground();
-    
-    // Начинаем рисовать мир с учётом камеры
-    ctx.save();
-    ctx.translate(-camera.x, -camera.y);
-    
-    // Рисуем мир
-    drawWorld();
-    
-    // Рисуем сущностей
-    drawEntities();
-    
-    // Рисуем эффекты
-    drawEffects();
-    
-    ctx.restore();
-    
-    // Рисуем интерфейс поверх всего
-    drawUI();
-}
-
-function drawBackground() {
-    const ctx = gameState.ctx;
-    const camera = gameState.camera;
-    
-    // Рисуем небо
-    const gradient = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
-    if (gameState.time.isDay) {
-        gradient.addColorStop(0, '#87CEEB');
-        gradient.addColorStop(1, '#E0F7FF');
-    } else {
-        gradient.addColorStop(0, '#191970');
-        gradient.addColorStop(1, '#000033');
-    }
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    
-    // Рисуем облака (параллакс)
-    ctx.fillStyle = gameState.time.isDay ? 'rgba(255, 255, 255, 0.8)' : 'rgba(200, 200, 255, 0.3)';
-    for (let i = 0; i < 5; i++) {
-        const x = (camera.x * 0.1 + i * 200) % (ctx.canvas.width + 400) - 200;
-        const y = 50 + i * 40;
-        const width = 100 + i * 20;
-        const height = 40 + i * 10;
-        
-        ctx.beginPath();
-        ctx.ellipse(x, y, width/2, height/2, 0, 0, Math.PI * 2);
-        ctx.ellipse(x + width/3, y - height/3, width/3, height/3, 0, 0, Math.PI * 2);
-        ctx.ellipse(x - width/3, y - height/3, width/3, height/3, 0, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    // Рисуем солнце/луну
-    const time = gameState.time.timeOfDay;
-    const sunX = time * ctx.canvas.width;
-    const sunY = Math.sin(time * Math.PI) * 100 + 50;
-    
-    ctx.beginPath();
-    if (gameState.time.isDay) {
-        ctx.fillStyle = '#FFD700';
-        ctx.arc(sunX, sunY, 30, 0, Math.PI * 2);
-    } else {
-        ctx.fillStyle = '#F0F0F0';
-        ctx.arc(sunX, sunY, 25, 0, Math.PI * 2);
-        // Рисуем кратеры на луне
-        ctx.fillStyle = '#888888';
-        ctx.arc(sunX - 10, sunY - 5, 5, 0, Math.PI * 2);
-        ctx.arc(sunX + 8, sunY + 10, 7, 0, Math.PI * 2);
-        ctx.arc(sunX + 15, sunY - 8, 4, 0, Math.PI * 2);
-    }
-    ctx.fill();
-}
-
-function drawWorld() {
-    const ctx = gameState.ctx;
-    const camera = gameState.camera;
-    
-    // Определяем видимую область в тайлах
-    const startX = Math.max(0, Math.floor(camera.x / CONFIG.TILE_SIZE) - 1);
-    const endX = Math.min(CONFIG.WORLD_WIDTH, Math.ceil((camera.x + camera.width) / CONFIG.TILE_SIZE) + 1);
-    const startY = Math.max(0, Math.floor(camera.y / CONFIG.TILE_SIZE) - 1);
-    const endY = Math.min(CONFIG.WORLD_HEIGHT, Math.ceil((camera.y + camera.height) / CONFIG.TILE_SIZE) + 1);
-    
-    // Рисуем видимые тайлы
-    for (let y = startY; y < endY; y++) {
-        for (let x = startX; x < endX; x++) {
-            const blockType = gameState.world[y][x];
-            const blockInfo = BLOCK_TYPES[blockType];
-            
-            if (blockType !== 0) { // Не рисуем воздух
-                const tileX = x * CONFIG.TILE_SIZE;
-                const tileY = y * CONFIG.TILE_SIZE;
-                
-                // Основной цвет блока
-                ctx.fillStyle = blockInfo.color;
-                ctx.fillRect(tileX, tileY, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
-                
-                // Текстура/детали
-                if (blockInfo.solid) {
-                    // Тень справа и снизу
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-                    ctx.fillRect(tileX + CONFIG.TILE_SIZE - 2, tileY, 2, CONFIG.TILE_SIZE);
-                    ctx.fillRect(tileX, tileY + CONFIG.TILE_SIZE - 2, CONFIG.TILE_SIZE, 2);
-                    
-                    // Свет сверху и слева
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-                    ctx.fillRect(tileX, tileY, CONFIG.TILE_SIZE, 2);
-                    ctx.fillRect(tileX, tileY, 2, CONFIG.TILE_SIZE);
-                }
-                
-                // Особые эффекты для воды
-                if (blockType === 7) {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                    const waveOffset = Math.sin(Date.now() * 0.001 + x * 0.5) * 2;
-                    ctx.fillRect(tileX, tileY + waveOffset, CONFIG.TILE_SIZE, 3);
-                }
-                
-                // Подсветка факелов
-                if (blockType === 10) {
-                    const lightRadius = 100;
-                    const gradient = ctx.createRadialGradient(
-                        tileX + CONFIG.TILE_SIZE/2, tileY + CONFIG.TILE_SIZE/2, 5,
-                        tileX + CONFIG.TILE_SIZE/2, tileY + CONFIG.TILE_SIZE/2, lightRadius
-                    );
-                    gradient.addColorStop(0, 'rgba(255, 69, 0, 0.5)');
-                    gradient.addColorStop(1, 'rgba(255, 69, 0, 0)');
-                    
-                    ctx.fillStyle = gradient;
-                    ctx.fillRect(tileX - lightRadius + CONFIG.TILE_SIZE/2, 
-                                tileY - lightRadius + CONFIG.TILE_SIZE/2, 
-                                lightRadius * 2, lightRadius * 2);
-                }
-            }
-        }
-    }
-}
-
-function drawEntities() {
-    const ctx = gameState.ctx;
-    
-    // Рисуем монстров
-    gameState.entities.forEach(entity => {
-        if (entity.type === 'player') return;
-        
-        const entityInfo = ENTITY_TYPES[entity.type];
-        
-        // Тело
-        ctx.fillStyle = entityInfo.color;
-        ctx.fillRect(entity.x - entity.width/2, entity.y - entity.height, 
-                    entity.width, entity.height);
-        
-        // Детали
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fillRect(entity.x - entity.width/2, entity.y - entity.height, 
-                    entity.width, 5); // Тень
-        
-        // Глаза
-        ctx.fillStyle = 'white';
-        const eyeX = entity.x + (entity.facing > 0 ? 5 : -5);
-        ctx.fillRect(eyeX - 2, entity.y - entity.height + 10, 4, 4);
-        
-        // Полоска здоровья
-        if (entity.health < entityInfo.health) {
-            const healthPercent = entity.health / entityInfo.health;
-            ctx.fillStyle = '#ff0000';
-            ctx.fillRect(entity.x - entity.width/2, entity.y - entity.height - 5, 
-                        entity.width, 3);
-            ctx.fillStyle = '#00ff00';
-            ctx.fillRect(entity.x - entity.width/2, entity.y - entity.height - 5, 
-                        entity.width * healthPercent, 3);
-        }
-    });
-    
-    // Рисуем игрока
-    const player = gameState.player;
-    const playerInfo = ENTITY_TYPES.player;
-    
-    // Тело
-    ctx.fillStyle = playerInfo.color;
-    ctx.fillRect(player.x - player.width/2, player.y - player.height, 
-                player.width, player.height);
-    
-    // Голова
-    ctx.fillStyle = '#ff6b8b';
-    ctx.fillRect(player.x - player.width/3, player.y - player.height, 
-                player.width * 0.67, player.height * 0.3);
-    
-    // Глаза
-    ctx.fillStyle = 'white';
-    const eyeX = player.x + (player.facing > 0 ? 3 : -3);
-    ctx.fillRect(eyeX - 2, player.y - player.height + 10, 4, 4);
-    
-    // Рот
-    ctx.fillStyle = '#8b0000';
-    ctx.fillRect(player.x - 3, player.y - player.height + 20, 6, 2);
-    
-    // Полоска здоровья
-    const healthPercent = player.health / player.maxHealth;
-    ctx.fillStyle = '#ff0000';
-    ctx.fillRect(player.x - player.width/2, player.y - player.height - 10, 
-                player.width, 5);
-    ctx.fillStyle = '#00ff00';
-    ctx.fillRect(player.x - player.width/2, player.y - player.height - 10, 
-                player.width * healthPercent, 5);
-    
-    // Полоска голода
-    const hungerPercent = player.hunger / player.maxHunger;
-    ctx.fillStyle = '#8b4513';
-    ctx.fillRect(player.x - player.width/2, player.y - player.height - 15, 
-                player.width, 3);
-    ctx.fillStyle = '#ffd700';
-    ctx.fillRect(player.x - player.width/2, player.y - player.height - 15, 
-                player.width * hungerPercent, 3);
-    
-    // Инвентарь в руке
-    const selectedItem = player.hotbar[player.selectedSlot];
-    if (selectedItem && ITEMS[selectedItem]) {
-        const handX = player.x + (player.facing > 0 ? player.width/2 : -player.width/2);
-        const handY = player.y - player.height/2;
-        
-        ctx.fillStyle = ITEMS[selectedItem].color;
-        ctx.fillRect(handX - 5, handY - 5, 10, 10);
-        
-        ctx.fillStyle = 'white';
-        ctx.font = '10px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(ITEMS[selectedItem].icon, handX, handY);
-    }
-}
-
-function drawEffects() {
-    const ctx = gameState.ctx;
-    
-    // Рисуем все активные эффекты
-    for (let i = gameState.animations.length - 1; i >= 0; i--) {
-        const effect = gameState.animations[i];
-        
-        ctx.save();
-        ctx.globalAlpha = effect.alpha;
-        
-        switch (effect.type) {
-            case 'hit':
-                ctx.fillStyle = '#ff0000';
-                ctx.beginPath();
-                ctx.arc(effect.x, effect.y, effect.size, 0, Math.PI * 2);
-                ctx.fill();
+            case 'place_tower':
+                this.gameState.towers.push(data.tower);
+                this.renderTower(data.tower);
+                this.addLog(`ÐÐ¿Ð¿Ð¾Ð½ÐµÐ½Ñ Ð¿Ð¾ÑÑÐ°Ð²Ð¸Ð» ${data.tower.type} Ð±Ð°ÑÐ½Ñ`);
                 break;
                 
-            case 'break':
-                ctx.fillStyle = '#ffffff';
-                for (let j = 0; j < 4; j++) {
-                    const angle = (j * Math.PI/2) + effect.rotation;
-                    const px = effect.x + Math.cos(angle) * effect.size;
-                    const py = effect.y + Math.sin(angle) * effect.size;
-                    
-                    ctx.beginPath();
-                    ctx.arc(px, py, 3, 0, Math.PI * 2);
-                    ctx.fill();
-                }
+            case 'next_wave':
+                this.gameState.wave = data.wave;
+                this.elements.wave.textContent = data.wave;
+                this.addLog(`ÐÐ¾Ð»Ð½Ð° ${data.wave} Ð½Ð°ÑÐ°Ð»Ð°ÑÑ!`);
                 break;
                 
-            case 'place':
-                ctx.fillStyle = '#00ff00';
-                ctx.beginPath();
-                ctx.arc(effect.x, effect.y, effect.size, 0, Math.PI * 2);
-                ctx.fill();
+            case 'game_state':
+                // Ð¡Ð¸Ð½ÑÑÐ¾Ð½Ð¸Ð·Ð°ÑÐ¸Ñ ÑÐ¾ÑÑÐ¾ÑÐ½Ð¸Ñ
+                Object.assign(this.gameState, data.state);
+                this.updateUI();
                 break;
         }
-        
-        ctx.restore();
-        
-        // Обновляем эффект
-        effect.lifetime -= 16;
-        effect.size += 0.5;
-        effect.alpha -= 0.02;
-        effect.rotation += 0.1;
-        
-        // Удаляем завершившиеся эффекты
-        if (effect.lifetime <= 0) {
-            gameState.animations.splice(i, 1);
-        }
     }
 }
 
-function drawUI() {
-    const ctx = gameState.ctx;
-    const canvas = gameState.canvas;
-    
-    // Полоска здоровья
-    const healthPercent = gameState.player.health / gameState.player.maxHealth;
-    ctx.fillStyle = '#ff0000';
-    ctx.fillRect(20, 20, 200, 20);
-    ctx.fillStyle = '#00ff00';
-    ctx.fillRect(20, 20, 200 * healthPercent, 20);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(20, 20, 200, 20);
-    
-    ctx.fillStyle = '#fff';
-    ctx.font = '14px Arial';
-    ctx.fillText(`Здоровье: ${Math.round(gameState.player.health)}/${gameState.player.maxHealth}`, 30, 35);
-    
-    // Полоска голода
-    const hungerPercent = gameState.player.hunger / gameState.player.maxHunger;
-    ctx.fillStyle = '#8b4513';
-    ctx.fillRect(20, 50, 200, 15);
-    ctx.fillStyle = '#ffd700';
-    ctx.fillRect(20, 50, 200 * hungerPercent, 15);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(20, 50, 200, 15);
-    
-    ctx.fillStyle = '#fff';
-    ctx.font = '12px Arial';
-    ctx.fillText(`Голод: ${Math.round(gameState.player.hunger)}/${gameState.player.maxHunger}`, 30, 62);
-    
-    // Миникарта
-    drawMinimap();
-    
-    // Отладочная информация
-    if (gameState.deviceType === 'desktop') {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(canvas.width - 250, 20, 230, 80);
-        
-        ctx.fillStyle = '#fff';
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(`Координаты: ${Math.round(gameState.player.x)}, ${Math.round(gameState.player.y)}`, canvas.width - 240, 40);
-        ctx.fillText(`Биом: ${getCurrentBiome()}`, canvas.width - 240, 60);
-        ctx.fillText(`Монстров: ${gameState.entities.length - 1}`, canvas.width - 240, 80);
-        ctx.fillText(`День: ${gameState.time.day} ${gameState.time.isDay ? 'День' : 'Ночь'}`, canvas.width - 240, 100);
-    }
-}
-
-function drawMinimap() {
-    const ctx = gameState.ctx;
-    const canvas = gameState.canvas;
-    const player = gameState.player;
-    
-    const minimapSize = 150;
-    const minimapX = canvas.width - minimapSize - 20;
-    const minimapY = 20;
-    
-    // Фон миникарты
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(minimapX, minimapY, minimapSize, minimapSize);
-    
-    // Масштаб для миникарты
-    const scale = minimapSize / (CONFIG.WORLD_WIDTH * CONFIG.TILE_SIZE);
-    
-    // Рисуем видимую область мира
-    const visibleStartX = Math.max(0, Math.floor(gameState.camera.x / CONFIG.TILE_SIZE));
-    const visibleEndX = Math.min(CONFIG.WORLD_WIDTH, Math.ceil((gameState.camera.x + gameState.camera.width) / CONFIG.TILE_SIZE));
-    const visibleStartY = Math.max(0, Math.floor(gameState.camera.y / CONFIG.TILE_SIZE));
-    const visibleEndY = Math.min(CONFIG.WORLD_HEIGHT, Math.ceil((gameState.camera.y + gameState.camera.height) / CONFIG.TILE_SIZE));
-    
-    for (let y = visibleStartY; y < visibleEndY; y++) {
-        for (let x = visibleStartX; x < visibleEndX; x++) {
-            const blockType = gameState.world[y][x];
-            if (blockType !== 0) {
-                const blockInfo = BLOCK_TYPES[blockType];
-                ctx.fillStyle = blockInfo.color;
-                ctx.fillRect(minimapX + x * CONFIG.TILE_SIZE * scale, 
-                           minimapY + y * CONFIG.TILE_SIZE * scale, 
-                           Math.max(1, CONFIG.TILE_SIZE * scale), 
-                           Math.max(1, CONFIG.TILE_SIZE * scale));
-            }
-        }
-    }
-    
-    // Рисуем игрока на миникарте
-    ctx.fillStyle = '#e94560';
-    const playerMapX = minimapX + player.x * scale;
-    const playerMapY = minimapY + player.y * scale;
-    ctx.beginPath();
-    ctx.arc(playerMapX, playerMapY, 3, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Рисуем монстров на миникарте
-    gameState.entities.forEach(entity => {
-        if (entity.type !== 'player') {
-            ctx.fillStyle = ENTITY_TYPES[entity.type].color;
-            const entityMapX = minimapX + entity.x * scale;
-            const entityMapY = minimapY + entity.y * scale;
-            ctx.beginPath();
-            ctx.arc(entityMapX, entityMapY, 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    });
-    
-    // Рамка миникарты
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(minimapX, minimapY, minimapSize, minimapSize);
-}
-
-// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-function getCurrentBiome() {
-    const playerTileY = Math.floor(gameState.player.y / CONFIG.TILE_SIZE);
-    
-    if (playerTileY < 15) return 'Лес';
-    if (playerTileY < 30) return 'Подземелье';
-    if (playerTileY < 40) return 'Пещера';
-    return 'Глубины';
-}
-
-function createHitEffect(x, y) {
-    gameState.animations.push({
-        type: 'hit',
-        x: x,
-        y: y,
-        size: 5,
-        alpha: 1,
-        lifetime: 500,
-        rotation: 0
-    });
-}
-
-function createBlockBreakEffect(x, y) {
-    gameState.animations.push({
-        type: 'break',
-        x: x,
-        y: y,
-        size: 10,
-        alpha: 1,
-        lifetime: 300,
-        rotation: 0
-    });
-}
-
-function createPlaceEffect(x, y) {
-    gameState.animations.push({
-        type: 'place',
-        x: x,
-        y: y,
-        size: 5,
-        alpha: 1,
-        lifetime: 200,
-        rotation: 0
-    });
-}
-
-function useFood(foodType) {
-    const foodInfo = ITEMS[foodType];
-    if (!foodInfo || foodInfo.type !== 'food') return;
-    
-    if (gameState.player.inventory[foodType] > 0) {
-        gameState.player.hunger = Math.min(gameState.player.maxHunger, 
-                                         gameState.player.hunger + foodInfo.hunger);
-        gameState.player.inventory[foodType]--;
-        
-        if (gameState.player.inventory[foodType] <= 0) {
-            delete gameState.player.inventory[foodType];
-        }
-        
-        updateInventory();
-        logEvent(`Съели ${foodInfo.name}! +${foodInfo.hunger} к голоду`);
-    }
-}
-
-function usePotion() {
-    if (gameState.player.inventory.health_potion > 0) {
-        gameState.player.health = Math.min(gameState.player.maxHealth, 
-                                         gameState.player.health + 50);
-        gameState.player.inventory.health_potion--;
-        
-        updateInventory();
-        logEvent('Выпили зелье здоровья! +50 HP');
-    }
-}
-
-function dropItem() {
-    const selectedItem = gameState.player.hotbar[gameState.player.selectedSlot];
-    if (selectedItem && gameState.player.inventory[selectedItem] > 0) {
-        gameState.player.inventory[selectedItem]--;
-        
-        if (gameState.player.inventory[selectedItem] <= 0) {
-            delete gameState.player.inventory[selectedItem];
-            // Убираем предмет из горячей панели
-            gameState.player.hotbar[gameState.player.selectedSlot] = null;
-        }
-        
-        updateInventory();
-        updateHotbar();
-        logEvent(`Выбросили ${ITEMS[selectedItem].name}`);
-    }
-}
-
-function toggleInventory() {
-    // В реальной игре здесь было бы открытие/закрытие инвентаря
-    logEvent('Инвентарь (реализуйте открытие окна инвентаря)');
-}
-
-function toggleBuildMode() {
-    logEvent('Режим строительства активирован');
-}
-
-function togglePause() {
-    gameState.paused = !gameState.paused;
-    const pauseBtn = document.getElementById('pauseBtn');
-    pauseBtn.innerHTML = gameState.paused ? 
-        '<i class="fas fa-play"></i> Продолжить' : 
-        '<i class="fas fa-pause"></i> Пауза';
-    logEvent(gameState.paused ? 'Игра на паузе' : 'Игра продолжается');
-}
-
-function showHelp() {
-    document.getElementById('helpModal').style.display = 'block';
-}
-
-function showMultiplayer() {
-    document.getElementById('multiplayerModal').style.display = 'block';
-}
-
-function logEvent(message) {
-    const logContent = document.getElementById('logContent');
-    const entry = document.createElement('div');
-    entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-    logContent.appendChild(entry);
-    
-    // Ограничиваем количество записей
-    while (logContent.children.length > 20) {
-        logContent.removeChild(logContent.firstChild);
-    }
-    
-    logContent.scrollTop = logContent.scrollHeight;
-}
-
-// ==================== ИНТЕРФЕЙС ====================
-function setupUI() {
-    updateInventory();
-    updateHotbar();
-    updateStats();
-    setupCrafting();
-}
-
-function updateInventory() {
-    const inventorySlots = document.getElementById('inventorySlots');
-    inventorySlots.innerHTML = '';
-    
-    Object.entries(gameState.player.inventory).forEach(([itemId, count]) => {
-        if (count > 0 && ITEMS[itemId]) {
-            const item = ITEMS[itemId];
-            const slot = document.createElement('div');
-            slot.className = 'inventory-slot';
-            slot.innerHTML = `
-                <span class="item-icon">${item.icon}</span>
-                <span class="count">${count}</span>
-            `;
-            slot.title = `${item.name} (${count})`;
-            slot.style.borderColor = item.color;
-            inventorySlots.appendChild(slot);
-        }
-    });
-    
-    // Обновляем статистику в интерфейсе
-    document.getElementById('health').textContent = Math.round(gameState.player.health);
-    document.getElementById('hunger').textContent = Math.round(gameState.player.hunger);
-    document.getElementById('damage').textContent = gameState.player.damage;
-    document.getElementById('armor').textContent = gameState.player.armor;
-    document.getElementById('speed').textContent = gameState.player.speed;
-    
-    // Обновляем информацию о мире
-    document.getElementById('currentBiome').textContent = getCurrentBiome();
-    document.getElementById('depth').textContent = Math.floor(gameState.player.y / CONFIG.TILE_SIZE);
-    document.getElementById('coordinates').textContent = 
-        `${Math.round(gameState.player.x)}, ${Math.round(gameState.player.y)}`;
-    document.getElementById('blocksBroken').textContent = gameState.stats.blocksBroken;
-    document.getElementById('monstersKilled').textContent = gameState.stats.monstersKilled;
-}
-
-function updateHotbar() {
-    const hotbar = document.getElementById('hotbar');
-    hotbar.innerHTML = '';
-    
-    gameState.player.hotbar.forEach((itemId, index) => {
-        const slot = document.createElement('div');
-        slot.className = 'hotbar-slot';
-        if (index === gameState.player.selectedSlot) {
-            slot.classList.add('active');
-        }
-        
-        if (itemId && ITEMS[itemId]) {
-            const item = ITEMS[itemId];
-            slot.innerHTML = item.icon;
-            slot.style.color = item.color;
-            slot.title = item.name;
-        } else {
-            slot.innerHTML = index + 1;
-        }
-        
-        slot.addEventListener('click', () => {
-            gameState.player.selectedSlot = index;
-            updateHotbar();
-        });
-        
-        hotbar.appendChild(slot);
-    });
-}
-
-function updateStats() {
-    // Обновляем полоски здоровья и голода
-    const healthBar = document.querySelector('.health-bar');
-    const hungerBar = document.querySelector('.hunger-bar');
-    
-    const healthPercent = (gameState.player.health / gameState.player.maxHealth) * 100;
-    const hungerPercent = (gameState.player.hunger / gameState.player.maxHunger) * 100;
-    
-    healthBar.style.width = `${healthPercent}%`;
-    hungerBar.style.width = `${hungerPercent}%`;
-}
-
-function setupCrafting() {
-    const craftList = document.getElementById('craftList');
-    craftList.innerHTML = '';
-    
-    CRAFT_RECIPES.forEach(recipe => {
-        const item = ITEMS[recipe.output];
-        if (!item) return;
-        
-        const craftItem = document.createElement('div');
-        craftItem.className = 'craft-item';
-        
-        // Форматируем список ингредиентов
-        const ingredients = Object.entries(recipe.inputs)
-            .map(([itemId, amount]) => {
-                const ingItem = ITEMS[itemId];
-                return `${ingItem.icon} ${amount}`;
-            })
-            .join(' + ');
-        
-        craftItem.innerHTML = `
-            <div>
-                <strong>${item.icon} ${item.name}</strong><br>
-                <small>${ingredients}</small>
-            </div>
-            <button class="craft-btn" data-recipe="${recipe.output}">Создать</button>
-        `;
-        
-        craftList.appendChild(craftItem);
-    });
-    
-    // Добавляем обработчики для кнопок крафта
-    document.querySelectorAll('.craft-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const recipeOutput = btn.dataset.recipe;
-            craftItem(recipeOutput);
-        });
-    });
-}
-
-function craftItem(itemId) {
-    const recipe = CRAFT_RECIPES.find(r => r.output === itemId);
-    if (!recipe) return false;
-    
-    // Проверяем, есть ли все ингредиенты
-    for (const [ingredientId, amount] of Object.entries(recipe.inputs)) {
-        if (!gameState.player.inventory[ingredientId] || 
-            gameState.player.inventory[ingredientId] < amount) {
-            logEvent(`Не хватает ${ITEMS[ingredientId].name} для крафта!`);
-            return false;
-        }
-    }
-    
-    // Тратим ингредиенты
-    for (const [ingredientId, amount] of Object.entries(recipe.inputs)) {
-        gameState.player.inventory[ingredientId] -= amount;
-        if (gameState.player.inventory[ingredientId] <= 0) {
-            delete gameState.player.inventory[ingredientId];
-        }
-    }
-    
-    // Добавляем результат
-    gameState.player.inventory[itemId] = 
-        (gameState.player.inventory[itemId] || 0) + recipe.amount;
-    
-    // Обновляем интерфейс
-    updateInventory();
-    logEvent(`Скрафтили ${ITEMS[itemId].name}!`);
-    return true;
-}
-
-// ==================== МУЛЬТИПЛЕЕР ====================
-function initMultiplayer() {
-    // Инициализация PeerJS
-    const peer = new Peer({
-        host: 'peerjs-server.herokuapp.com',
-        secure: true,
-        port: 443
-    });
-    
-    peer.on('open', (id) => {
-        gameState.multiplayer.peer = peer;
-        gameState.multiplayer.roomId = id;
-        document.getElementById('roomId').textContent = id;
-        logEvent(`Мультиплеер: комната создана (ID: ${id})`);
-    });
-    
-    peer.on('connection', (conn) => {
-        conn.on('open', () => {
-            gameState.multiplayer.conn = conn;
-            gameState.multiplayer.players.push(conn.peer);
-            logEvent(`Игрок ${conn.peer} присоединился`);
-            
-            // Отправляем текущее состояние игры
-            conn.send({
-                type: 'gameState',
-                state: gameState
-            });
-        });
-        
-        conn.on('data', (data) => {
-            handleMultiplayerData(data);
-        });
-        
-        conn.on('close', () => {
-            const index = gameState.multiplayer.players.indexOf(conn.peer);
-            if (index > -1) {
-                gameState.multiplayer.players.splice(index, 1);
-            }
-            logEvent(`Игрок ${conn.peer} отключился`);
-        });
-    });
-}
-
-function handleMultiplayerData(data) {
-    switch (data.type) {
-        case 'gameState':
-            // Синхронизация состояния игры
-            Object.assign(gameState, data.state);
-            break;
-        case 'playerMove':
-            // Обновление позиции другого игрока
-            const player = gameState.multiplayer.players.find(p => p.id === data.playerId);
-            if (player) {
-                player.x = data.x;
-                player.y = data.y;
-            }
-            break;
-        case 'blockUpdate':
-            // Обновление блока
-            if (data.y >= 0 && data.y < gameState.world.length &&
-                data.x >= 0 && data.x < gameState.world[data.y].length) {
-                gameState.world[data.y][data.x] = data.blockType;
-            }
-            break;
-    }
-}
-
-// ==================== ИГРОВОЙ ЦИКЛ ====================
-function gameLoop(timestamp = 0) {
-    const deltaTime = timestamp - gameState.lastTime || 0;
-    gameState.lastTime = timestamp;
-    
-    if (!gameState.paused) {
-        // Обновление игровой логики
-        updatePlayer(deltaTime);
-        updateEntities(deltaTime);
-        updateTime(deltaTime);
-        
-        // Обновление интерфейса
-        updateStats();
-    }
-    
-    // Отрисовка
-    render();
-    
-    // Следующий кадр
-    requestAnimationFrame(gameLoop);
-}
-
-// ==================== ЗАПУСК ИГРЫ ====================
-// Инициализация при загрузке страницы
+// ÐÐ½Ð¸ÑÐ¸Ð°Ð»Ð¸Ð·Ð°ÑÐ¸Ñ Ð¸Ð³ÑÑ
 window.addEventListener('load', () => {
-    init();
-    
-    // Запускаем мультиплеер (опционально)
-    // initMultiplayer();
-    
-    // Обработчики для кнопок мультиплеера
-    document.getElementById('createRoomBtn')?.addEventListener('click', () => {
-        initMultiplayer();
-        document.getElementById('createRoomBtn').disabled = true;
-    });
-    
-    document.getElementById('joinRoomBtn')?.addEventListener('click', () => {
-        const roomId = document.getElementById('roomIdInput').value.trim();
-        if (roomId && gameState.multiplayer.peer) {
-            const conn = gameState.multiplayer.peer.connect(roomId);
-            conn.on('open', () => {
-                gameState.multiplayer.conn = conn;
-                gameState.multiplayer.connected = true;
-                logEvent(`Присоединились к комнате ${roomId}`);
-            });
-        }
-    });
+    new MultiplayerTowerDefense();
 });
