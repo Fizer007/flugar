@@ -3,39 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Минималистичный Суд</title>
+    <title>СУД | Процесс</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>СУД</h1>
-        
-        <div id="setup-room">
+        <header>
+            <h1>ДЕЛО №<span id="case-id">....</span></h1>
+            <p class="subtitle">ВЫСШИЙ ТРИБУНАЛ. ПЕРВАЯ ИНСТАНЦИЯ.</p>
+        </header>
+
+        <hr>
+
+        <div id="setup-screen">
             <p>Ваш ID: <strong id="my-id">...</strong></p>
-            <input type="text" id="peer-id" placeholder="Введите ID друга">
-            <div class="buttons">
-                <button id="connect-btn">Подключиться к другу</button>
-                <button id="test-btn" class="secondary">Тест (одиночный режим)</button>
+            <div class="input-group">
+                <input type="text" id="peer-id-input" placeholder="Введите ID оппонента">
+                <button id="connect-btn">ПОДКЛЮЧИТЬСЯ</button>
             </div>
+            <p id="status">Ожидание подключения...</p>
         </div>
 
-        <div id="game-area" class="hidden">
-            <h2 id="role-display">Ожидание...</h2>
-            <div id="case-description">
-                <p>Дело: <span id="case-text">Загрузка дела...</span></p>
-            </div>
-            <div id="chat-box"></div>
-            
-            <div id="judge-status"></div>
+        <div id="game-screen" class="hidden">
+            <h2 id="role-display">ВАША РОЛЬ: ...</h2>
+            <div id="scenario-text">Ожидание хода противника...</div>
+            <div id="actions" class="actions-grid">
+                </div>
+            <p id="turn-status">Раунд 1 из 5</p>
+        </div>
 
-            <div class="input-group">
-                <input type="text" id="message-input" placeholder="Ваш аргумент...">
-                <button id="send-btn">Подать иск</button>
+        <div id="final-screen" class="hidden">
+            <h1 id="verdict-text">ПРИГОВОР</h1>
+            <div id="chart-container">
+                <canvas id="justice-chart"></canvas>
             </div>
+            <button onclick="location.reload()">НАЧАТЬ НОВОЕ ДЕЛО</button>
         </div>
     </div>
-
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
