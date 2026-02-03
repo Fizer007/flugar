@@ -1,5 +1,6 @@
 /**
- * HACKER_CONSOLE_v1 - Duel Edition (Fixed)
+ * HACKER_CONSOLE_v1.Final_Fixed
+ * Исправлено: Синхронизация финала, Удаление по индексам, Статус готовности
  */
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -18,10 +19,13 @@ const peer = new Peer(myId);
 
 let conn = null;
 let gameState = "IDLE"; 
-let myOriginalCode = "";     // Мой код (который я чиню)
-let enemyOriginalCode = "";   // Код врага (который я ломаю)
-let myViewCode = "";          // То, что я вижу на экране
+
+let myOriginalCode = "";      
+let enemyViewCode = "";       
+let myCorruptedFromEnemy = ""; 
 let attackCount = 0;
+let iFinishedAttack = false;
+let enemyFinishedAttack = false;
 
 const output = document.getElementById('output');
 const input = document.getElementById('command-input');
@@ -37,18 +41,18 @@ function log(msg, type = "info") {
 }
 
 function clearConsole() {
-    output.innerHTML = "<div>[СИСТЕМА ОЧИЩЕНА ДЛЯ БЕЗОПАСНОСТИ]</div>";
+    output.innerHTML = "<div>[SCREEN_CLEARED_FOR_SECURITY]</div>";
 }
 
-// Генерирует длинный сложный код
-function generateComplexCode() {
-    const parts = ["ROOT", "ADMIN", "KERNEL", "SYSTEM", "DATA", "CRYPT", "VOID"];
-    const hex = Math.floor(Math.random() * 0xFFFFFF).toString(16).toUpperCase();
-    return parts[Math.floor(Math.random() * parts.length)] + "_" + hex + "_PROT";
+function generateCode() {
+    const words = ["ROOT", "VOID", "DATA", "CRYPT", "NODE", "BASE", "CORE"];
+    const hex = Math.floor(Math.random() * 0xFFFF).toString(16).toUpperCase();
+    return words[Math.floor(Math.random() * words.length)] + "_" + hex + "_SYS";
 }
 
+// --- СЕТЕВАЯ ЧАСТЬ ---
 peer.on('open', id => {
-    log(`КОНСОЛЬ ЗАПУЩЕНА. ВАШ ID: ${id}`);
+    log(`КОНСОЛЬ ОНЛАЙН. ВАШ ID: ${id}`);
     log(`КОМАНДА: MINIGAME2_[ID_ДРУГА]`);
 });
 
@@ -60,40 +64,45 @@ peer.on('connection', c => {
 function setupPeerListeners() {
     conn.on('data', data => {
         if (data.type === 'G2_START') {
-            myOriginalCode = data.code; // Получаем код, который нам нужно будет чинить
-            log("ИГРА НАЧАТА! ЗАПОМНИТЕ ВАШ КОД:", "sys");
+            myOriginalCode = data.code;
+            log("ИГРА НАЧАТА! ЗАПОМНИТЕ СВОЙ КОД:", "sys");
             log(myOriginalCode);
             setTimeout(() => {
                 clearConsole();
-                log("ОЖИДАНИЕ ХОДА ПРОТИВНИКА...", "sys");
-                gameState = "WAIT_FOR_ATTACK";
-            }, 8000); // 8 секунд на запоминание
+                log("ЖДЕМ АТАКИ ВРАГА...", "sys");
+                gameState = "WAIT_FOR_ENEMY_CODE";
+            }, 8000);
         }
         
-        if (data.type === 'YOUR_TURN_ATTACK') {
-            enemyOriginalCode = data.code;
-            gameState = "G2_ATTACK";
-            log("ВАША ОЧЕРЕДЬ АТАКОВАТЬ!", "sys");
-            log("УДАЛИТЕ 3 СИМВОЛА ИЗ КОДА ВРАГА:");
-            log("КОД ВРАГА: " + enemyOriginalCode);
-            log("Правило: если буквы повтор., пиши БУКВА+НОМЕР (напр. O2)");
-        }
-
-        if (data.type === 'FINAL_REPAIR') {
-            myViewCode = data.corrupted;
-            gameState = "G2_REPAIR";
-            log("ФИНАЛ: ВОССТАНОВИТЕ СВОЙ КОД!", "sys");
-            log("ИСКАЖЕННЫЙ КОД: " + myViewCode);
-            log("ВВЕДИТЕ ПОЛНЫЙ ОРИГИНАЛЬНЫЙ КОД:");
+        if (data.type === 'YOUR_CORRUPTED_CODE') {
+            myCorruptedFromEnemy = data.corrupted;
+            enemyFinishedAttack = true; // Враг прислал наш побитый код
+            log("ВРАГ ЗАВЕРШИЛ АТАКУ", "sys");
+            checkStartFinal();
         }
 
         if (data.type === 'WIN') {
-            log("ВЫ ПРОИГРАЛИ! ВРАГ ВОССТАНОВИЛ СИСТЕМУ ПЕРВЫМ.", "err");
+            log("ВЫ ПРОИГРАЛИ! ВРАГ ВОССТАНОВИЛ СИСТЕМУ.", "err");
             gameState = "IDLE";
         }
     });
+
+    conn.on('error', (err) => log("ОШИБКА СВЯЗИ: " + err, "err"));
 }
 
+function checkStartFinal() {
+    if (iFinishedAttack && enemyFinishedAttack) {
+        clearConsole();
+        gameState = "G2_REPAIR";
+        log("--- ФИНАЛ: РЕМОНТ! ---", "sys");
+        log("ВАШ ПОВРЕЖДЕННЫЙ КОД: " + myCorruptedFromEnemy);
+        log("ВВЕДИТЕ ОРИГИНАЛ ЦЕЛИКОМ!");
+    } else if (iFinishedAttack) {
+        log("ВЫ ГОТОВЫ. ОЖИДАНИЕ ДЕЙСТВИЙ ВРАГА...", "sys");
+    }
+}
+
+// --- ОБРАБОТКА ВВОДА ---
 function handleCommand(val) {
     val = val.toUpperCase().trim();
     if (!val) return;
@@ -103,84 +112,62 @@ function handleCommand(val) {
         conn = peer.connect(targetId);
         setupPeerListeners();
         conn.on('open', () => {
-            // Генерируем два РАЗНЫХ кода
-            const codeForMe = generateComplexCode();
-            const codeForEnemy = generateComplexCode();
-            
+            log("СВЯЗЬ УСТАНОВЛЕНА!", "sys");
+            const codeForMe = generateCode();
+            const codeForEnemy = generateCode();
             myOriginalCode = codeForMe;
-            log("СВЯЗЬ УСТАНОВЛЕНА. ЗАПОМНИТЕ ВАШ КОД:", "sys");
-            log(myOriginalCode);
-            
-            // Отправляем врагу его код
+            log("ЗАПОМНИТЕ ВАШ КОД: " + myOriginalCode);
             conn.send({type: 'G2_START', code: codeForEnemy});
             
             setTimeout(() => {
                 clearConsole();
+                enemyViewCode = codeForEnemy;
                 gameState = "G2_ATTACK";
-                enemyOriginalCode = codeForEnemy;
-                log("ВАША ОЧЕРЕДЬ АТАКОВАТЬ!", "sys");
-                log("КОД ВРАГА: " + enemyOriginalCode);
-                log("УДАЛИТЕ 3 СИМВОЛА (напр. A или O2)");
+                log("АТАКУЙТЕ! КОД ВРАГА: " + enemyViewCode);
             }, 8000);
         });
         return;
     }
 
     if (gameState === "G2_ATTACK") {
-        let charToDel = val[0];
-        let index = val.length > 1 ? parseInt(val.slice(1)) : 1;
-        
-        // Логика удаления символа по индексу
-        let count = 0;
-        let newCode = "";
-        let found = false;
+        let char = val[0];
+        let idx = val.length > 1 ? parseInt(val.slice(1)) : 1;
+        let count = 0, newCode = "", found = false;
 
-        for (let i = 0; i < enemyOriginalCode.length; i++) {
-            if (enemyOriginalCode[i] === charToDel) {
+        for (let i = 0; i < enemyViewCode.length; i++) {
+            if (enemyViewCode[i] === char) {
                 count++;
-                if (count === index && !found) {
-                    newCode += "_";
-                    found = true;
-                    continue;
+                if (count === idx && !found) {
+                    newCode += "_"; found = true; continue;
                 }
             }
-            newCode += enemyOriginalCode[i];
+            newCode += enemyViewCode[i];
         }
 
         if (found) {
-            enemyOriginalCode = newCode;
+            enemyViewCode = newCode;
             attackCount++;
-            log(`СИМВОЛ ${val} УДАЛЕН. (${attackCount}/3)`);
-            log("ТЕКУЩИЙ ВИД: " + enemyOriginalCode);
-            
+            log(`УДАЛЕНО: ${val} (${attackCount}/3)`);
+            log("КОД ВРАГА: " + enemyViewCode);
             if (attackCount === 3) {
                 attackCount = 0;
-                log("АТАКА ЗАВЕРШЕНА. ПЕРЕДАЧА ДАННЫХ...", "sys");
-                conn.send({type: 'YOUR_TURN_ATTACK', code: enemyOriginalCode});
-                gameState = "WAIT_FOR_REPAIR";
-                clearConsole();
-                log("ЖДЕМ, ПОКА ВРАГ ЗАКОНЧИТ АТАКУ...");
-                
-                // Если мы получили код от врага, переходим в финал
-                // Это сработает, когда придет пакет FINAL_REPAIR
+                iFinishedAttack = true;
+                conn.send({type: 'YOUR_CORRUPTED_CODE', corrupted: enemyViewCode});
+                checkStartFinal(); 
             }
-        } else {
-            log("СИМВОЛ НЕ НАЙДЕН", "err");
-        }
+        } else { log("СИМВОЛ НЕ НАЙДЕН", "err"); }
     }
 
     if (gameState === "G2_REPAIR") {
         if (val === myOriginalCode) {
-            log("ДОСТУП ВОССТАНОВЛЕН! ВЫ ПОБЕДИЛИ!", "sys");
+            log("ПОБЕДА! СИСТЕМА ВОССТАНОВЛЕНА.", "sys");
             conn.send({type: 'WIN'});
             gameState = "IDLE";
-        } else {
-            log("ОШИБКА ЦЕЛОСТНОСТИ КОДА", "err");
-        }
+        } else { log("НЕВЕРНЫЙ КОД!", "err"); }
     }
 }
 
-// --- КЛАВИАТУРА (Остается прежней) ---
+// --- КЛАВИАТУРА ---
 const vKey = document.getElementById('v-keyboard');
 vKey.innerHTML = "";
 vKey.style.display = "grid";
@@ -197,7 +184,7 @@ layout.forEach(char => {
 
 const nav = document.createElement('div');
 nav.style = "grid-column: span 10; display: flex; gap: 5px; margin-top: 5px;";
-const btnS = "flex: 1; border: 1px solid #fff; color: #fff; text-align: center; padding: 18px; cursor: pointer; font-family: inherit;";
+const btnS = "flex: 1; border: 1px solid #fff; color: #fff; text-align: center; padding: 18px; cursor: pointer;";
 
 const back = document.createElement('div'); back.innerText = "BACK"; back.style = btnS;
 const spc = document.createElement('div'); spc.innerText = "SPACE"; spc.style = btnS + "flex: 2;";
