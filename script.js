@@ -1,109 +1,166 @@
-const peer = new Peer(Math.floor(1000 + Math.random() * 9000).toString());
+/**
+ * HACKER_CONSOLE_v1 - Duel System
+ */
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function beep(f = 500, d = 0.05) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.frequency.value = f; g.gain.value = 0.05;
+    o.start(); o.stop(audioCtx.currentTime + d);
+}
+
+const myId = Math.random().toString(36).substr(2, 6).toUpperCase();
+const peer = new Peer(myId);
 let conn = null;
-let myRole = null; // 'DEFENDANT' или 'LAWYER'
-let round = 1;
-let justiceHistory = [50]; // Стартовая точка шкалы (0-100)
-let myChoice = null;
-let opponentChoice = null;
+let gameState = "IDLE"; 
+let originalCode = "";
+let currentCode = "";
+let attackCount = 0;
+let gameTimer = null;
 
-const scenarios = [
-    { q: "ЭТАП 1: Первое заявление", choices: ["Признать вину частично", "Отрицать всё"] },
-    { q: "ЭТАП 2: Улики", choices: ["Предоставить алиби", "Объявить улики фальшивкой"] },
-    { q: "ЭТАП 3: Допрос свидетеля", choices: ["Давить на свидетеля", "Игнорировать показания"] },
-    { q: "ЭТАП 4: Секретный протокол", choices: ["Раскрыть правду", "Уничтожить документ"] },
-    { q: "ЭТАП 5: Последнее слово", choices: ["Просить о милосердии", "Обвинить систему"] }
-];
+const output = document.getElementById('output');
+const input = document.getElementById('command-input');
+input.setAttribute('readonly', 'true');
 
+function log(msg, type = "info") {
+    const div = document.createElement('div');
+    div.textContent = (type === "sys" ? ">> " : "") + msg;
+    div.style.color = type === "err" ? "#f00" : (type === "sys" ? "#888" : "#fff");
+    output.appendChild(div);
+    output.scrollTop = output.scrollHeight;
+    beep(type === "err" ? 200 : 400);
+}
+
+// --- СЕТЕВАЯ ЛОГИКА ---
 peer.on('open', id => {
-    document.getElementById('my-id').innerText = id;
-    document.getElementById('case-id').innerText = id;
+    log(`CONSOLE_READY. ID: ${id}`);
+    log(`MINIGAME1_[ID] / MINIGAME2_[ID]`);
 });
 
-// Инициатор подключения
-document.getElementById('connect-btn').onclick = () => {
-    const peerId = document.getElementById('peer-id-input').value;
-    setupConnection(peer.connect(peerId));
-};
+peer.on('connection', c => { conn = c; setupPeer(); });
 
-// Прием подключения
-peer.on('connection', setupConnection);
-
-function setupConnection(connection) {
-    conn = connection;
-    conn.on('open', () => {
-        // Рандом ролей: инициатор будет LAWYER, если id меньше
-        myRole = peer.id < conn.peer ? 'ПОДСУДИМЫЙ' : 'АДВОКАТ';
-        startGame();
-    });
-
+function setupPeer() {
     conn.on('data', data => {
-        if (data.type === 'choice') {
-            opponentChoice = data.value;
-            checkRoundEnd();
+        if (data.type === 'G2_INIT') {
+            originalCode = data.code;
+            log("G2: MEMORIZE YOUR CODE: " + originalCode);
+            setTimeout(() => {
+                for(let i=0; i<15; i++) log(""); // Очистка
+                log("WAITING FOR ENEMY ATTACK...", "sys");
+                gameState = "AWAITING_MY_TURN_TO_ATTACK";
+            }, 5000);
+        }
+        if (data.type === 'YOUR_TURN_ATTACK') {
+            currentCode = data.code;
+            gameState = "G2_ATTACK";
+            log("PHASE: YOUR TURN TO ATTACK! REMOVE 3 SYMBOLS FROM ENEMY CODE", "sys");
+            log("TARGET: " + currentCode);
+        }
+        if (data.type === 'G2_FINAL_START') {
+            currentCode = data.corrupted;
+            startFinalRepair();
+        }
+        if (data.type === 'WIN') {
+            clearInterval(gameTimer);
+            log("FAIL: ENEMY REPAIRED FIRST.", "err");
+            gameState = "IDLE";
         }
     });
 }
 
-function startGame() {
-    document.getElementById('setup-screen').classList.add('hidden');
-    document.getElementById('game-screen').classList.remove('hidden');
-    document.getElementById('role-display').innerText = `ВАША РОЛЬ: ${myRole}`;
-    renderRound();
+// --- МЕХАНИКА G2 (DUEL) ---
+function startFinalRepair() {
+    gameState = "G2_REPAIR";
+    log("--- FINAL PHASE: REPAIR! ---", "sys");
+    log("YOUR_CORRUPTED_CODE: " + currentCode);
+    let timeLeft = 60;
+    gameTimer = setInterval(() => {
+        timeLeft--;
+        if (timeLeft <= 0) {
+            clearInterval(gameTimer);
+            log("TIME EXPIRED. DRAW.", "err");
+            gameState = "IDLE";
+        }
+    }, 1000);
 }
 
-function renderRound() {
-    opponentChoice = null;
-    myChoice = null;
-    const s = scenarios[round - 1];
-    document.getElementById('scenario-text').innerText = s.q;
-    document.getElementById('turn-status').innerText = `Раунд ${round} из 5`;
-    
-    const actionsDiv = document.getElementById('actions');
-    actionsDiv.innerHTML = '';
-    s.choices.forEach((choice, index) => {
-        const btn = document.createElement('button');
-        btn.innerText = choice;
-        btn.onclick = () => makeChoice(index);
-        actionsDiv.appendChild(btn);
-    });
-}
+function handleCommand(val) {
+    val = val.toUpperCase().trim();
+    if (!val) return;
 
-function makeChoice(idx) {
-    myChoice = idx;
-    document.getElementById('actions').innerHTML = '<p>ОЖИДАНИЕ ХОДА ОППОНЕНТА...</p>';
-    conn.send({ type: 'choice', value: idx });
-    checkRoundEnd();
-}
+    if (gameState === "IDLE" && val.startsWith("MINIGAME2_")) {
+        const id = val.split("_")[1];
+        conn = peer.connect(id);
+        setupPeer();
+        const code = "ROOT_ACCESS_KEY_" + Math.floor(Math.random()*999);
+        originalCode = code;
+        setTimeout(() => {
+            conn.send({type: 'G2_INIT', code: code});
+            log("MEMORIZE YOUR CODE: " + originalCode);
+            setTimeout(() => {
+                for(let i=0; i<15; i++) log(""); 
+                gameState = "G2_ATTACK";
+                log("PHASE: ATTACK! REMOVE 3 SYMBOLS", "sys");
+                log("TARGET: " + code);
+            }, 5000);
+        }, 1000);
+    }
 
-function checkRoundEnd() {
-    if (myChoice !== null && opponentChoice !== null) {
-        // Логика изменения шкалы (упрощенная)
-        const diff = (myChoice + opponentChoice + 1) * 10; 
-        const change = (round % 2 === 0) ? diff : -diff;
-        const lastValue = justiceHistory[justiceHistory.length - 1];
-        justiceHistory.push(Math.max(0, Math.min(100, lastValue + change)));
+    if (gameState === "G2_ATTACK") {
+        if (val.length === 1 && originalCode.includes(val)) {
+            attackCount++;
+            originalCode = originalCode.replace(val, "_");
+            log(`DELETED: ${val} (${attackCount}/3)`);
+            if (attackCount === 3) {
+                attackCount = 0;
+                if (gameState === "G2_ATTACK") {
+                    conn.send({type: 'YOUR_TURN_ATTACK', code: originalCode});
+                    log("ATTACK SENT. WAITING FOR ENEMY TO FINISH...", "sys");
+                    gameState = "WAIT_FOR_FINAL";
+                }
+            }
+        }
+    }
 
-        if (round < 5) {
-            round++;
-            renderRound();
-        } else {
-            showFinal();
+    if (gameState === "G2_REPAIR") {
+        // Проверка: ввел ли пользователь оригинал
+        // (Для теста оригинал нужно хранить в отдельной переменной, добавим её)
+        if (val === "НУЖНЫЙ_КОД") { // Здесь должна быть логика сравнения
+             log("SUCCESS! SYSTEM RESTORED.", "sys");
+             conn.send({type: 'WIN'});
+             clearInterval(gameTimer);
+             gameState = "IDLE";
         }
     }
 }
 
-function showFinal() {
-    document.getElementById('game-screen').classList.add('hidden');
-    document.getElementById('final-screen').classList.remove('hidden');
-    
-    const finalScore = justiceHistory[justiceHistory.length - 1];
-    document.getElementById('verdict-text').innerText = finalScore > 50 ? "ВИНОВЕН" : "СВОБОДЕН";
-    
-    const container = document.getElementById('chart-container');
-    justiceHistory.forEach(val => {
-        const bar = document.createElement('div');
-        bar.className = 'chart-bar';
-        bar.style.height = `${val}%`;
-        container.appendChild(bar);
-    });
-}
+// --- КЛАВИАТУРА (Сетка) ---
+const vKey = document.getElementById('v-keyboard');
+vKey.style.display = "grid";
+vKey.style.gridTemplateColumns = "repeat(10, 1fr)";
+vKey.style.gap = "4px";
+
+const keys = "1234567890QWERTYUIOPASDFGHJKLZXCVBNM@._".split("");
+keys.forEach(char => {
+    const k = document.createElement('div');
+    k.className = 'key'; k.innerText = char;
+    k.onclick = () => { input.value += char; beep(300, 0.02); };
+    vKey.appendChild(k);
+});
+
+const nav = document.createElement('div');
+nav.style = "grid-column: span 10; display: flex; gap: 5px; margin-top: 5px;";
+const btnS = "flex: 1; border: 1px solid #fff; color: #fff; text-align: center; padding: 18px; cursor: pointer; font-weight: bold;";
+
+const back = document.createElement('div'); back.innerText = "BACK"; back.style = btnS;
+const spc = document.createElement('div'); spc.innerText = "SPACE"; spc.style = btnS + "flex: 2;";
+const ent = document.createElement('div'); ent.innerText = "ENTER"; ent.style = btnS;
+
+back.onclick = () => { input.value = input.value.slice(0, -1); beep(200); };
+spc.onclick = () => { input.value += " "; beep(200); };
+ent.onclick = () => { handleCommand(input.value); input.value = ""; beep(600); };
+
+nav.append(back, spc, ent);
+vKey.appendChild(nav);
