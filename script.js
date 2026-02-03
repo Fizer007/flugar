@@ -1,214 +1,109 @@
-let peer = new Peer();
-let conn;
-let myRole = ""; 
-let chatHistory = [];
-let isMyTurn = false;
+const peer = new Peer(Math.floor(1000 + Math.random() * 9000).toString());
+let conn = null;
+let myRole = null; // 'DEFENDANT' или 'LAWYER'
+let round = 1;
+let justiceHistory = [50]; // Стартовая точка шкалы (0-100)
+let myChoice = null;
+let opponentChoice = null;
 
-// Элементы
-const myIdDisplay = document.getElementById('my-id');
-const peerIdInput = document.getElementById('peer-id');
-const connectBtn = document.getElementById('connect-btn');
-const testBtn = document.getElementById('test-btn');
-const gameArea = document.getElementById('game-area');
-const setupRoom = document.getElementById('setup-room');
-const chatBox = document.getElementById('chat-box');
-const messageInput = document.getElementById('message-input');
-const sendBtn = document.getElementById('send-btn');
-const roleDisplay = document.getElementById('role-display');
-const statusDiv = document.getElementById('judge-status');
+const scenarios = [
+    { q: "ЭТАП 1: Первое заявление", choices: ["Признать вину частично", "Отрицать всё"] },
+    { q: "ЭТАП 2: Улики", choices: ["Предоставить алиби", "Объявить улики фальшивкой"] },
+    { q: "ЭТАП 3: Допрос свидетеля", choices: ["Давить на свидетеля", "Игнорировать показания"] },
+    { q: "ЭТАП 4: Секретный протокол", choices: ["Раскрыть правду", "Уничтожить документ"] },
+    { q: "ЭТАП 5: Последнее слово", choices: ["Просить о милосердии", "Обвинить систему"] }
+];
 
-peer.on('open', id => myIdDisplay.innerText = id);
-
-peer.on('connection', c => {
-    conn = c;
-    setupConnectionListeners();
+peer.on('open', id => {
+    document.getElementById('my-id').innerText = id;
+    document.getElementById('case-id').innerText = id;
 });
 
-connectBtn.onclick = () => {
-    const remoteId = peerIdInput.value.trim();
-    if (!remoteId) return alert("Введите ID!");
-    conn = peer.connect(remoteId);
+// Инициатор подключения
+document.getElementById('connect-btn').onclick = () => {
+    const peerId = document.getElementById('peer-id-input').value;
+    setupConnection(peer.connect(peerId));
+};
+
+// Прием подключения
+peer.on('connection', setupConnection);
+
+function setupConnection(connection) {
+    conn = connection;
     conn.on('open', () => {
-        const r = Math.random() > 0.5 ? "ОБВИНИТЕЛЬ" : "АДВОКАТ";
-        conn.send({ type: 'START', role: (r === "ОБВИНИТЕЛЬ" ? "АДВОКАТ" : "ОБВИНИТЕЛЬ") });
-        startGame(r);
+        // Рандом ролей: инициатор будет LAWYER, если id меньше
+        myRole = peer.id < conn.peer ? 'ПОДСУДИМЫЙ' : 'АДВОКАТ';
+        startGame();
     });
-    setupConnectionListeners();
-};
 
-function setupConnectionListeners() {
     conn.on('data', data => {
-        if (data.type === 'START') startGame(data.role);
-        if (data.type === 'MSG') processMove("ОППОНЕНТ", data.text);
+        if (data.type === 'choice') {
+            opponentChoice = data.value;
+            checkRoundEnd();
+        }
     });
 }
 
-function startGame(role) {
-    myRole = role;
-    chatHistory = [];
-    setupRoom.classList.add('hidden');
-    gameArea.classList.remove('hidden');
-    roleDisplay.innerText = "Роль: " + myRole;
-    isMyTurn = myRole.includes("ОБВИНИТЕЛЬ");
-    updateInputState();
-    addMessage("СИСТЕМА", isMyTurn ? "Ваш ход. Начните суд." : "Ждем оппонента...");
+function startGame() {
+    document.getElementById('setup-screen').classList.add('hidden');
+    document.getElementById('game-screen').classList.remove('hidden');
+    document.getElementById('role-display').innerText = `ВАША РОЛЬ: ${myRole}`;
+    renderRound();
 }
 
-function updateInputState() {
-    messageInput.disabled = !isMyTurn;
-    sendBtn.disabled = !isMyTurn;
+function renderRound() {
+    opponentChoice = null;
+    myChoice = null;
+    const s = scenarios[round - 1];
+    document.getElementById('scenario-text').innerText = s.q;
+    document.getElementById('turn-status').innerText = `Раунд ${round} из 5`;
+    
+    const actionsDiv = document.getElementById('actions');
+    actionsDiv.innerHTML = '';
+    s.choices.forEach((choice, index) => {
+        const btn = document.createElement('button');
+        btn.innerText = choice;
+        btn.onclick = () => makeChoice(index);
+        actionsDiv.appendChild(btn);
+    });
 }
 
-sendBtn.onclick = async () => {
-    const text = messageInput.value.trim();
-    if (!text) return;
-    addMessage("ВЫ", text);
-    if (conn) conn.send({ type: 'MSG', text: text });
-    messageInput.value = "";
-    isMyTurn = false;
-    updateInputState();
-    await processMove("ВЫ", text); 
-};
-
-async function processMove(sender, text) {
-    chatHistory.push(`${sender === "ВЫ" ? myRole : "ОППОНЕНТ"}: ${text}`);
-    await askJudge();
-    if (sender === "ОППОНЕНТ" && !statusDiv.innerText.includes("ВЕРДИКТ")) {
-        isMyTurn = true;
-        updateInputState();
-    }
+function makeChoice(idx) {
+    myChoice = idx;
+    document.getElementById('actions').innerHTML = '<p>ОЖИДАНИЕ ХОДА ОППОНЕНТА...</p>';
+    conn.send({ type: 'choice', value: idx });
+    checkRoundEnd();
 }
 
-// ФУНКЦИЯ С ИИ БЕЗ КЛЮЧА
-async function askJudge() {
-    async function askJudge() {
-   async function askJudge() {
-    if (!statusDiv) return;
-    statusDiv.innerHTML = '🔨 СУДЬЯ ВЫХОДИТ ИЗ ТЕНИ...';
+function checkRoundEnd() {
+    if (myChoice !== null && opponentChoice !== null) {
+        // Логика изменения шкалы (упрощенная)
+        const diff = (myChoice + opponentChoice + 1) * 10; 
+        const change = (round % 2 === 0) ? diff : -diff;
+        const lastValue = justiceHistory[justiceHistory.length - 1];
+        justiceHistory.push(Math.max(0, Math.min(100, lastValue + change)));
 
-    // Текст для ИИ
-    const lastMsg = chatHistory[chatHistory.length - 1];
-    const prompt = `Ты строгий судья. Одной короткой фразой прокомментируй: ${lastMsg}`;
-
-    // Настройка прерывания (если сеть висит дольше 3 секунд)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-    try {
-        // Используем Pollinations через простой URL (это решает проблемы CORS)
-        const url = `https://text.pollinations.ai/${encodeURIComponent(prompt)}?model=openai`;
-        
-        const response = await fetch(url, { signal: controller.signal });
-
-        if (!response.ok) throw new Error("API не отвечает");
-
-        const aiText = await response.text();
-        clearTimeout(timeoutId);
-        
-        statusDiv.innerHTML = ""; 
-        addMessage("СУДЬЯ", aiText);
-
-    } catch (e) {
-        // ЕСЛИ СЕТЬ ИЛИ ХОСТИНГ БЛОКИРУЮТ — ВКЛЮЧАЕМ ЛОКАЛЬНОГО БОТА
-        clearTimeout(timeoutId);
-        console.warn("Сеть заблокирована, включен локальный режим");
-        
-        const backupPhrases = [
-            "Суд принял это к сведению. Что скажет защита?",
-            "Это серьезное заявление. Продолжайте.",
-            "Интересная позиция. Суд слушает дальше.",
-            "Протест отклонен! Говорите по существу.",
-            "Хмм... Звучит сомнительно. Есть ли факты?"
-        ];
-        
-        const randomPhrase = backupPhrases[Math.floor(Math.random() * backupPhrases.length)];
-        statusDiv.innerHTML = "";
-        addMessage("СУДЬЯ (AUTO)", randomPhrase);
-    }
-
-    // Логика финала процесса (после 6 сообщений)
-    if (chatHistory.length >= 6) {
-        const winner = Math.random() > 0.5 ? "ОБВИНИТЕЛЬ" : "АДВОКАТ";
-        setTimeout(() => {
-            addMessage("СУДЬЯ", `ВЕРДИКТ ВЫНЕСЕН! Победил ${winner}. Заседание окончено.`);
-            isMyTurn = false;
-            updateInputState();
-        }, 500);
-    }
-}
-
-
-    try {
-        const response = await fetch("https://text.pollinations.ai/", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                messages: [{ role: "user", content: prompt }],
-                model: "openai"
-            }),
-            signal: controller.signal // Привязываем таймер
-        });
-
-        const aiText = await response.text();
-        clearTimeout(timeoutId);
-        statusDiv.innerHTML = ""; 
-        addMessage("СУДЬЯ", aiText);
-
-    } catch (e) {
-        // ЕСЛИ ИИ НЕ ОТВЕТИЛ (БЛОКИРОВКА ИЛИ СЕТЬ) - ВКЛЮЧАЕМ БОТА
-        console.log("ИИ недоступен, включаю запасного судью...");
-        const backupPhrases = [
-            "Суд принял ваше заявление.",
-            "Обвинение звучит серьезно. Что скажет защита?",
-            "Интересный аргумент. Продолжайте.",
-            "Соблюдайте тишину! Суд слушает."
-        ];
-        const randomPhrase = backupPhrases[Math.floor(Math.random() * backupPhrases.length)];
-        
-        statusDiv.innerHTML = "";
-        addMessage("СУДЬЯ (БОТ)", randomPhrase);
-    }
-
-    // Проверка на вердикт
-    if (chatHistory.length >= 6) {
-        addMessage("СУДЬЯ", "ВЕРДИКТ ВЫНЕСЕН! Процесс завершен.");
-        isMyTurn = false;
-        updateInputState();
-    }
-}
-
-    try {
-        // Используем публичный прокси для Llama (бесплатно, без ключа)
-        const response = await fetch("https://text.pollinations.ai/", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                messages: [{ role: "user", content: prompt }],
-                model: "openai" // Использует GPT-подобную модель через прокси
-            })
-        });
-
-        const aiText = await response.text();
-        
-        statusDiv.innerHTML = ""; 
-        addMessage("СУДЬЯ", aiText);
-
-        if (aiText.includes("ВЕРДИКТ ВЫНЕСЕН")) {
-            isMyTurn = false;
-            updateInputState();
+        if (round < 5) {
+            round++;
+            renderRound();
+        } else {
+            showFinal();
         }
-    } catch (e) {
-        statusDiv.innerHTML = "Судья взял перерыв (ошибка сети)";
-        console.error(e);
     }
 }
 
-function addMessage(sender, text) {
-    const div = document.createElement('div');
-    div.className = 'msg';
-    div.innerHTML = `<strong>${sender}:</strong> ${text}`;
-    chatBox.appendChild(div);
-    chatBox.scrollTop = chatBox.scrollHeight;
+function showFinal() {
+    document.getElementById('game-screen').classList.add('hidden');
+    document.getElementById('final-screen').classList.remove('hidden');
+    
+    const finalScore = justiceHistory[justiceHistory.length - 1];
+    document.getElementById('verdict-text').innerText = finalScore > 50 ? "ВИНОВЕН" : "СВОБОДЕН";
+    
+    const container = document.getElementById('chart-container');
+    justiceHistory.forEach(val => {
+        const bar = document.createElement('div');
+        bar.className = 'chart-bar';
+        bar.style.height = `${val}%`;
+        container.appendChild(bar);
+    });
 }
-
-testBtn.onclick = () => startGame("ОБВИНИТЕЛЬ (ТЕСТ)");
