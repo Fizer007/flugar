@@ -1,168 +1,134 @@
-const MAIN_ID = "jopa-global-chat-room-v3"; // Новый ID для чистого теста
+const MAIN_ID = "jopa-global-v4";
 let peer = null;
-let connections = []; 
+let connections = [];
 let myProfile = { name: "Аноним", avatar: null };
 const alertSound = new Audio('1.mp3');
 
-// Настройка профиля
+// Превью аватара
 document.getElementById('avatar-input').onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
         myProfile.avatar = reader.result;
         document.getElementById('avatar-preview').style.backgroundImage = `url(${reader.result})`;
     };
-    reader.readAsDataURL(e.target.files[0]);
+    reader.readAsDataURL(file);
 };
 
 document.getElementById('join-btn').onclick = () => {
-    const name = document.getElementById('username-input').value;
-    if (name) myProfile.name = name;
+    const n = document.getElementById('username-input').value;
+    if (n) myProfile.name = n;
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('chat-screen').style.display = 'flex';
-    connectToNetwork();
+    initNetwork();
 };
 
-function connectToNetwork() {
-    if (peer) peer.destroy();
-    
-    // Пытаемся стать хостом
+function initNetwork() {
     peer = new Peer(MAIN_ID);
-
-    peer.on('open', (id) => {
-        addSystemMsg("Вы зашли как ХОСТ (Главный)");
-        listenForGuests();
-    });
-
+    peer.on('open', () => { setStatus("Хост"); listen(); });
     peer.on('error', (err) => {
-        if (err.type === 'unavailable-id' || err.type === 'id-taken') {
-            // Если ID занят, заходим как обычный юзер
-            joinAsGuest();
-        } else {
-            console.error("Ошибка:", err);
-            // Если критическая ошибка, пробуем переподключиться через 3 сек
-            setTimeout(connectToNetwork, 3000);
+        if (err.type === 'unavailable-id') {
+            peer = new Peer();
+            peer.on('open', () => {
+                const c = peer.connect(MAIN_ID, { reliable: true });
+                setup(c);
+                setStatus("В сети");
+            });
         }
     });
 }
 
-function listenForGuests() {
-    peer.on('connection', (conn) => {
-        setupConn(conn);
-    });
+function setStatus(s) { document.getElementById('status').innerText = s; }
+
+function listen() {
+    peer.on('connection', (c) => setup(c));
 }
 
-function joinAsGuest() {
-    peer = new Peer(); // Генерируем случайный ID для себя
-    peer.on('open', () => {
-        const conn = peer.connect(MAIN_ID, { reliable: true });
-        setupConn(conn);
-        addSystemMsg("Подключено к хосту");
-    });
-}
-
-function setupConn(conn) {
-    conn.on('open', () => {
-        if (!connections.find(c => c.peer === conn.peer)) {
-            connections.push(conn);
-        }
-        
-        conn.on('data', (data) => {
-            if (data.type === 'sound') {
-                alertSound.play();
-                addSystemMsg(`${data.sender} отправил сигнал!`);
-            } else {
-                addMessage(data, 'friend');
-            }
-
-            // Реле: если мы хост, рассылаем всем остальным
-            if (peer.id === MAIN_ID) {
-                broadcast(data, conn.peer);
-            }
-        });
-
-        conn.on('close', () => {
-            connections = connections.filter(c => c.peer !== conn.peer);
+function setup(c) {
+    c.on('open', () => {
+        if (!connections.find(x => x.peer === c.peer)) connections.push(c);
+        c.on('data', (data) => {
+            if (data.type === 'sound') alertSound.play();
+            if (peer.id === MAIN_ID) broadcast(data, c.peer);
+            addMessage(data, 'friend');
         });
     });
 }
 
-function broadcast(data, skipId) {
-    connections.forEach(c => {
-        if (c.open && c.peer !== skipId) c.send(data);
-    });
+function broadcast(d, skip) {
+    connections.forEach(c => { if(c.open && c.peer !== skip) c.send(d); });
 }
-
-// Отправка звука
-document.getElementById('alert-btn').onclick = () => {
-    const data = { type: 'sound', sender: myProfile.name };
-    alertSound.play();
-    sendRawData(data);
-};
 
 function sendMessage() {
-    const textInput = document.getElementById('message-input');
-    const fileInput = document.getElementById('file-input');
-    if (!textInput.value && !fileInput.files[0]) return;
+    const ti = document.getElementById('message-input');
+    const fi = document.getElementById('file-input');
+    const val = ti.value.trim();
 
-    let payload = {
-        type: 'msg',
-        name: myProfile.name,
-        avatar: myProfile.avatar,
-        text: textInput.value,
-        file: null
-    };
+    // Система команд
+    if (val === "!tictac") {
+        sendData({ type: 'game', game: 'tictac', board: Array(9).fill(null) });
+        ti.value = ''; return;
+    }
 
-    if (fileInput.files[0]) {
+    if (!val && !fi.files[0]) return;
+
+    let p = { type: 'msg', name: myProfile.name, avatar: myProfile.avatar, text: val };
+
+    if (fi.files[0]) {
         const reader = new FileReader();
         reader.onload = () => {
-            payload.file = reader.result;
-            payload.fileName = fileInput.files[0].name;
-            payload.fileType = fileInput.files[0].type;
-            sendRawData(payload);
-            addMessage(payload, 'my');
+            p.file = reader.result;
+            p.fileName = fi.files[0].name;
+            p.fileType = fi.files[0].type;
+            sendData(p);
+            addMessage(p, 'my');
         };
-        reader.readAsDataURL(fileInput.files[0]);
+        reader.readAsDataURL(fi.files[0]);
     } else {
-        sendRawData(payload);
-        addMessage(payload, 'my');
+        sendData(p);
+        addMessage(p, 'my');
     }
-    textInput.value = '';
-    fileInput.value = '';
+    ti.value = ''; fi.value = '';
 }
 
-function sendRawData(data) {
-    if (peer.id === MAIN_ID) {
-        broadcast(data, null);
-    } else {
-        const host = connections.find(c => c.peer === MAIN_ID);
-        if (host && host.open) host.send(data);
+function sendData(d) {
+    if (peer.id === MAIN_ID) broadcast(d, null);
+    else {
+        const h = connections.find(x => x.peer === MAIN_ID);
+        if (h && h.open) h.send(d);
     }
 }
 
-function addMessage(data, type) {
+function addMessage(d, type) {
     const box = document.getElementById('messages');
-    const msg = document.createElement('div');
-    msg.className = `msg ${type === 'my' ? 'my-msg' : ''}`;
-    const avatar = data.avatar ? `<img src="${data.avatar}" class="msg-avatar">` : "";
-    msg.innerHTML = `<div class="msg-info">${avatar}<b>${data.name}</b></div>`;
-    if (data.text) msg.innerHTML += `<div>${data.text}</div>`;
-    if (data.file) {
-        if (data.fileType.startsWith('image/')) {
-            msg.innerHTML += `<img src="${data.file}" class="msg-img" onclick="window.open(this.src)">`;
-        } else {
-            msg.innerHTML += `<a href="${data.file}" download="${data.fileName}" class="msg-file">📎 ${data.fileName}</a>`;
+    const m = document.createElement('div');
+    m.className = `msg ${type === 'my' ? 'my-msg' : ''}`;
+    
+    if (d.type === 'game') {
+        m.innerHTML = `<b>Игра: Крестики-нолики</b><div class="ttt-grid"></div>`;
+        const grid = m.querySelector('.ttt-grid');
+        d.board.forEach((cell, i) => {
+            const c = document.createElement('div');
+            c.className = 'ttt-cell';
+            c.innerText = cell || '';
+            grid.appendChild(c);
+        });
+    } else {
+        const ava = d.avatar ? `<img src="${d.avatar}" class="msg-avatar">` : "";
+        m.innerHTML = `<div class="msg-info">${ava}<b>${d.name || 'Аноним'}</b></div>`;
+        if (d.text) m.innerHTML += `<div>${d.text}</div>`;
+        if (d.file) {
+            if (d.fileType.startsWith('image/')) m.innerHTML += `<img src="${d.file}" class="msg-img">`;
+            else m.innerHTML += `<a href="${d.file}" download="${d.fileName}" style="color:#0f8;">📎 ${d.fileName}</a>`;
         }
     }
-    box.appendChild(msg);
-    box.scrollTop = box.scrollHeight;
-}
-
-function addSystemMsg(text) {
-    const box = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.style.cssText = "text-align:center; font-size:10px; color:gray; margin: 5px 0;";
-    div.innerText = text;
-    box.appendChild(div);
+    box.appendChild(m);
+    box.parentElement.scrollTop = box.parentElement.scrollHeight;
 }
 
 document.getElementById('send-btn').onclick = sendMessage;
+document.getElementById('alert-btn').onclick = () => {
+    alertSound.play();
+    sendData({ type: 'sound', sender: myProfile.name });
+};
