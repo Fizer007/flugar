@@ -3,73 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hide & Seek Online</title>
+    <title>Gemini Peer Chat</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <div class="game-container">
-            <canvas id="gameCanvas"></canvas>
-            
-            <div class="hud">
-                <div class="player-info">
-                    <div class="player-color" id="playerColor"></div>
-                    <span id="playerName"></span>
-                    <div class="status" id="playerStatus"></div>
-                </div>
-                
-                <div class="event-warning" id="eventWarning">
-                    <div class="warning-content">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <span>ПРЯТАТЬСЯ!</span>
-                        <i class="fas fa-exclamation-triangle"></i>
-                    </div>
-                    <div class="timer" id="eventTimer"></div>
-                </div>
-                
-                <div class="controls-info">
-                    <div class="control"><span>A/D</span> Движение</div>
-                    <div class="control"><span>W/Пробел</span> Прыжок</div>
-                    <div class="control"><span>E</span> Спрятаться</div>
-                </div>
-            </div>
-            
-            <div class="game-menu" id="gameMenu">
-                <h1><i class="fas fa-users"></i> Hide & Seek Online</h1>
-                <div class="menu-section">
-                    <h2>Ваш ID для подключения друзей:</h2>
-                    <div class="player-id" id="playerId"></div>
-                    <button class="btn copy-btn" onclick="copyPlayerId()">
-                        <i class="fas fa-copy"></i> Копировать ID
-                    </button>
-                </div>
-                
-                <div class="menu-section">
-                    <h2>Подключиться к другу:</h2>
-                    <div class="connect-input">
-                        <input type="text" id="friendId" placeholder="Введите ID друга">
-                        <button class="btn" onclick="connectToGame()">
-                            <i class="fas fa-plug"></i> Подключиться
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="menu-section">
-                    <h2>Игроки онлайн: <span id="onlineCount">1</span></h2>
-                    <div class="players-list" id="playersList"></div>
-                </div>
-                
-                <div class="menu-section">
-                    <button class="btn start-btn" onclick="startGame()">
-                        <i class="fas fa-play"></i> Начать игру
-                    </button>
-                </div>
-            </div>
+        <h2>Твой ID: <span id="my-id">...</span></h2>
+        
+        <div class="connect-box">
+            <input type="text" id="friend-id" placeholder="Введите ID друга">
+            <button id="connect-btn">Подключиться</button>
+        </div>
+
+        <div id="chat-box" class="chat-box">
+            <div class="messages" id="messages"></div>
+        </div>
+
+        <div class="input-box">
+            <input type="text" id="message-input" placeholder="Сообщение...">
+            <button id="send-btn">Отправить</button>
         </div>
     </div>
-    
-    <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
