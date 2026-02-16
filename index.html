@@ -3,28 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Peer Chat</title>
+    <title>Global Chat JOPA</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div class="container">
         <div id="login-screen" class="screen">
-            <h2>Ваш профиль</h2>
-            <input type="text" id="username-input" placeholder="Введите ник...">
+            <h2 style="text-align:center;">JOPA Global Chat</h2>
+            <input type="text" id="username-input" placeholder="Твой ник">
             <label class="file-label">
-                📸 Выбрать аватар
+                📸 Выбрать аватарку
                 <input type="file" id="avatar-input" accept="image/*" hidden>
             </label>
             <div id="avatar-preview"></div>
-            <button id="join-btn">Войти в чат</button>
+            <button id="join-btn">Войти в онлайн</button>
         </div>
 
         <div id="chat-screen" class="screen" style="display:none;">
+            <div class="header">
+                <span id="status">Подключение...</span>
+            </div>
             <div id="chat-box" class="chat-box">
                 <div class="messages" id="messages"></div>
             </div>
-
             <div class="input-area">
                 <label class="attach-btn">
                     📎
