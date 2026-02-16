@@ -2,60 +2,44 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JOPA Global Chat v3</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JOPA Chat & Games</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div class="container">
-        
         <div id="login-screen" class="screen">
             <h2 style="text-align:center;">JOPA Online</h2>
-            
             <div class="profile-setup">
-                <input type="text" id="username-input" placeholder="Введите ваш ник..." maxlength="20">
-                
-                <label class="file-label" for="avatar-input">
-                    📸 Выбрать аватарку
+                <input type="text" id="username-input" placeholder="Никнейм..." maxlength="15">
+                <label class="avatar-label">
+                    <span>📸 Выбрать аватар</span>
                     <input type="file" id="avatar-input" accept="image/*" hidden>
                 </label>
-                
                 <div id="avatar-preview"></div>
             </div>
-
-            <button id="join-btn">Войти в общий чат</button>
-            <p style="font-size: 10px; color: #555; text-align: center;">
-                P2P соединение: первый зашедший становится хостом.
-            </p>
+            <button id="join-btn">Войти в чат</button>
         </div>
 
         <div id="chat-screen" class="screen" style="display:none;">
             <div class="header">
-                <div id="status">Подключение...</div>
-                <div id="online-count"></div>
+                <span id="status">Подключение...</span>
             </div>
-
             <div id="chat-box" class="chat-box">
-                <div class="messages" id="messages"></div>
+                <div id="messages"></div>
             </div>
-
             <div class="input-area">
-                <label class="attach-btn" title="Прикрепить файл">
+                <label class="attach-btn">
                     📎
                     <input type="file" id="file-input" hidden>
                 </label>
-                
-                <input type="text" id="message-input" placeholder="Напишите что-нибудь...">
-                
-                <button id="alert-btn" title="Послать сигнал">🔔</button>
-                
+                <input type="text" id="message-input" placeholder="Введите ! для команд...">
+                <button id="alert-btn">🔔</button>
                 <button id="send-btn">➤</button>
             </div>
         </div>
-        
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>
