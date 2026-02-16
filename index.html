@@ -3,26 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Peer Chat</title>
+    <title>Global Peer Chat</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h2>Твой ID: <span id="my-id">...</span></h2>
-        
-        <div class="connect-box">
-            <input type="text" id="friend-id" placeholder="Введите ID друга">
-            <button id="connect-btn">Подключиться</button>
+        <div id="login-screen" class="screen">
+            <h2>Ваш профиль</h2>
+            <input type="text" id="username-input" placeholder="Введите ник...">
+            <label class="file-label">
+                📸 Выбрать аватар
+                <input type="file" id="avatar-input" accept="image/*" hidden>
+            </label>
+            <div id="avatar-preview"></div>
+            <button id="join-btn">Войти в чат</button>
         </div>
 
-        <div id="chat-box" class="chat-box">
-            <div class="messages" id="messages"></div>
-        </div>
+        <div id="chat-screen" class="screen" style="display:none;">
+            <div id="chat-box" class="chat-box">
+                <div class="messages" id="messages"></div>
+            </div>
 
-        <div class="input-box">
-            <input type="text" id="message-input" placeholder="Сообщение...">
-            <button id="send-btn">Отправить</button>
+            <div class="input-area">
+                <label class="attach-btn">
+                    📎
+                    <input type="file" id="file-input" hidden>
+                </label>
+                <input type="text" id="message-input" placeholder="Сообщение...">
+                <button id="send-btn">➤</button>
+            </div>
         </div>
     </div>
     <script src="script.js"></script>
