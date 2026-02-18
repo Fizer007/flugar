@@ -1,23 +1,76 @@
-body { font-family: sans-serif; background: #0b0b0b; color: white; margin: 0; display: flex; justify-content: center; height: 100vh; overflow: hidden; }
-.container { width: 100%; max-width: 500px; background: #161616; display: flex; flex-direction: column; }
-.screen { display: flex; flex-direction: column; gap: 15px; height: 100%; padding: 15px; box-sizing: border-box; }
+:root {
+    --primary: #6366f1; --accent: #f43f5e; --bg: #0f172a; --glass: rgba(255, 255, 255, 0.05);
+}
 
-/* Фикс кнопки аватара */
-.avatar-label { display: block; background: #222; padding: 12px; text-align: center; border: 1px dashed #444; border-radius: 8px; cursor: pointer; width: 100%; box-sizing: border-box; }
-#avatar-preview { width: 60px; height: 60px; border-radius: 50%; background: #333; margin: 10px auto; background-size: cover; background-position: center; border: 2px solid #007bff; }
+body {
+    margin: 0; font-family: 'Inter', sans-serif; background: var(--bg); color: white;
+    display: flex; justify-content: center; min-height: 100vh; overflow-x: hidden;
+}
 
-.chat-box { flex-grow: 1; overflow-y: auto; background: #0e0e0e; border-radius: 10px; padding: 10px; margin-bottom: 10px; display: flex; flex-direction: column; }
-.msg { margin-bottom: 10px; padding: 10px; border-radius: 12px; background: #252525; max-width: 85%; align-self: flex-start; word-break: break-all; }
-.my-msg { background: #0056b3; align-self: flex-end; }
-.msg-info { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-bottom: 4px; color: #aaa; }
-.msg-avatar { width: 20px; height: 20px; border-radius: 50%; }
+.glass-bg {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: radial-gradient(circle at 50% 50%, #4338ca 0%, transparent 70%);
+    z-index: -1; opacity: 0.4; transition: background 1s ease;
+}
 
-.input-area { display: flex; gap: 8px; align-items: center; padding-bottom: 5px; }
-input[type="text"] { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #222; color: white; min-width: 0; }
-button { padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; flex-shrink: 0; }
-#alert-btn { background: #ffc107; color: black; }
+.app-container { width: 100%; max-width: 500px; padding: 15px; box-sizing: border-box; }
 
-/* Крестики-нолики */
-.ttt-grid { display: grid; grid-template-columns: repeat(3, 40px); gap: 5px; margin-top: 5px; }
-.ttt-cell { width: 40px; height: 40px; background: #444; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; border-radius: 4px; }
-.msg-img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
+.top-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--glass); padding: 10px; border-radius: 16px;
+    backdrop-filter: blur(10px); margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);
+}
+
+.mode-selector button {
+    background: transparent; border: none; color: #94a3b8; padding: 8px 12px; cursor: pointer; border-radius: 8px;
+}
+.mode-selector button.active { background: var(--primary); color: white; }
+
+.main-card {
+    background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 20px;
+}
+
+textarea, input, select {
+    width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px; color: white; padding: 12px; margin-bottom: 10px; box-sizing: border-box; outline: none;
+}
+
+.mode-btn {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    color: #94a3b8; padding: 10px; border-radius: 10px; cursor: pointer;
+}
+
+.opt-controls { display: flex; gap: 10px; margin-top: 5px; margin-bottom: 15px; }
+.opt-controls button { flex: 1; background: var(--glass); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 0.75rem; }
+
+.primary-btn { width: 100%; background: var(--primary); border: none; color: white; padding: 14px; border-radius: 12px; font-weight: 600; cursor: pointer; }
+.primary-btn:disabled { background: #475569; opacity: 0.5; }
+
+.location-badge { padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; margin-bottom: 10px; display: inline-block; transition: 0.5s; background: var(--primary); }
+
+.story-text { font-size: 1.15rem; line-height: 1.5; margin-bottom: 20px; }
+
+.choice-btn { width: 100%; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 14px; border-radius: 12px; margin-bottom: 8px; text-align: left; cursor: pointer; }
+
+.qte-btn {
+    width: 110px; height: 110px; border-radius: 50%; border: 5px solid var(--accent);
+    background: transparent; color: white; font-size: 1.8rem; font-weight: bold;
+    cursor: pointer; margin: 20px auto; display: block; transition: 0.1s;
+    box-shadow: 0 0 15px var(--accent);
+}
+.qte-btn:active { transform: scale(0.9); background: var(--accent); }
+
+.timer-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 15px; }
+.timer-fill { height: 100%; background: var(--accent); width: 100%; transition: linear; }
+
+.history-item { background: rgba(255, 255, 255, 0.03); padding: 12px; border-radius: 12px; margin-bottom: 10px; border-left: 4px solid var(--primary); font-size: 0.85rem; }
+
+.switch { position: relative; display: inline-block; width: 34px; height: 18px; }
+.switch input { opacity: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #334155; transition: .4s; border-radius: 20px; }
+.slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+input:checked + .slider { background-color: var(--accent); }
+input:checked + .slider:before { transform: translateX(16px); }
+
+#status-bar { text-align: center; padding: 15px; font-size: 0.7rem; color: #64748b; }
