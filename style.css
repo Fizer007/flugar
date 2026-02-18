@@ -1,76 +1,91 @@
-:root {
-    --primary: #6366f1; --accent: #f43f5e; --bg: #0f172a; --glass: rgba(255, 255, 255, 0.05);
-}
-
 body {
-    margin: 0; font-family: 'Inter', sans-serif; background: var(--bg); color: white;
-    display: flex; justify-content: center; min-height: 100vh; overflow-x: hidden;
+    margin: 0;
+    overflow: hidden;
+    background: #e0f7fa;
+    font-family: sans-serif;
+    touch-action: none;
 }
 
-.glass-bg {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: radial-gradient(circle at 50% 50%, #4338ca 0%, transparent 70%);
-    z-index: -1; opacity: 0.4; transition: background 1s ease;
+#menu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    z-index: 10;
 }
 
-.app-container { width: 100%; max-width: 500px; padding: 15px; box-sizing: border-box; }
-
-.top-nav {
-    display: flex; justify-content: space-between; align-items: center;
-    background: var(--glass); padding: 10px; border-radius: 16px;
-    backdrop-filter: blur(10px); margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);
+input {
+    padding: 10px;
+    width: 200px;
+    border: 2px solid #00acc1;
+    border-radius: 5px;
+    margin-bottom: 10px;
 }
 
-.mode-selector button {
-    background: transparent; border: none; color: #94a3b8; padding: 8px 12px; cursor: pointer; border-radius: 8px;
-}
-.mode-selector button.active { background: var(--primary); color: white; }
-
-.main-card {
-    background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 20px;
-}
-
-textarea, input, select {
-    width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px; color: white; padding: 12px; margin-bottom: 10px; box-sizing: border-box; outline: none;
+button {
+    padding: 10px 20px;
+    background: #00acc1;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
 }
 
-.mode-btn {
-    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-    color: #94a3b8; padding: 10px; border-radius: 10px; cursor: pointer;
+#game-container { position: relative; width: 100vw; height: 100vh; }
+
+canvas { display: block; background: #fff; }
+
+#ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    pointer-events: none;
 }
 
-.opt-controls { display: flex; gap: 10px; margin-top: 5px; margin-bottom: 15px; }
-.opt-controls button { flex: 1; background: var(--glass); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 0.75rem; }
-
-.primary-btn { width: 100%; background: var(--primary); border: none; color: white; padding: 14px; border-radius: 12px; font-weight: 600; cursor: pointer; }
-.primary-btn:disabled { background: #475569; opacity: 0.5; }
-
-.location-badge { padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; margin-bottom: 10px; display: inline-block; transition: 0.5s; background: var(--primary); }
-
-.story-text { font-size: 1.15rem; line-height: 1.5; margin-bottom: 20px; }
-
-.choice-btn { width: 100%; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 14px; border-radius: 12px; margin-bottom: 8px; text-align: left; cursor: pointer; }
-
-.qte-btn {
-    width: 110px; height: 110px; border-radius: 50%; border: 5px solid var(--accent);
-    background: transparent; color: white; font-size: 1.8rem; font-weight: bold;
-    cursor: pointer; margin: 20px auto; display: block; transition: 0.1s;
-    box-shadow: 0 0 15px var(--accent);
+#hp-bar {
+    width: 200px;
+    height: 20px;
+    background: #ccc;
+    border-radius: 10px;
+    overflow: hidden;
 }
-.qte-btn:active { transform: scale(0.9); background: var(--accent); }
 
-.timer-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 15px; }
-.timer-fill { height: 100%; background: var(--accent); width: 100%; transition: linear; }
+#hp-fill {
+    width: 100%;
+    height: 100%;
+    background: #4caf50;
+    transition: width 0.2s;
+}
 
-.history-item { background: rgba(255, 255, 255, 0.03); padding: 12px; border-radius: 12px; margin-bottom: 10px; border-left: 4px solid var(--primary); font-size: 0.85rem; }
+/* Джойстик */
+#joystick-zone {
+    position: absolute;
+    bottom: 40px;
+    left: 40px;
+    width: 120px;
+    height: 120px;
+    display: none; /* Включим через JS для тач-устройств */
+}
 
-.switch { position: relative; display: inline-block; width: 34px; height: 18px; }
-.switch input { opacity: 0; }
-.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #334155; transition: .4s; border-radius: 20px; }
-.slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
-input:checked + .slider { background-color: var(--accent); }
-input:checked + .slider:before { transform: translateX(16px); }
+#joystick-base {
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.1);
+    border-radius: 50%;
+    position: relative;
+}
 
-#status-bar { text-align: center; padding: 15px; font-size: 0.7rem; color: #64748b; }
+#joystick-stick {
+    width: 50px;
+    height: 50px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 50%;
+    position: absolute;
+    top: 35px;
+    left: 35px;
+}
