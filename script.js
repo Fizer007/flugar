@@ -1,105 +1,115 @@
-let peer, conn;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 const myIdDisplay = document.getElementById('my-id');
-const statusDisplay = document.getElementById('status');
 const connectBtn = document.getElementById('connect-btn');
+const peerInput = document.getElementById('peer-id-input');
 
-// --- Инициализация PeerJS ---
-function initPeer() {
-    // Создаем случайный ID, если сервер задерживается
-    const randomId = Math.floor(Math.random() * 9000) + 1000;
-    
-    peer = new Peer('game-' + randomId); 
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-    peer.on('open', (id) => {
-        myIdDisplay.innerText = id;
-        statusDisplay.innerText = "Готов к подключению";
-        statusDisplay.style.color = "#44ff44";
-    });
+// --- СЕТЕВАЯ ЛОГИКА ---
+const peer = new Peer(); // Генерирует случайный ID
+let conn;
+let players = {};
+let myId = null;
 
-    peer.on('error', (err) => {
-        console.error(err);
-        statusDisplay.innerText = "Ошибка: " + err.type;
-        // Если ID занят, пробуем еще раз
-        if(err.type === 'unavailable-id') setTimeout(initPeer, 1000);
-    });
+peer.on('open', (id) => {
+    myId = id;
+    myIdDisplay.innerText = id;
+    players[id] = { x: 100, y: 100, hp: 100, res: 0, color: 'cyan' };
+});
 
-    // Слушаем входящие подключения
-    peer.on('connection', (incomingConn) => {
-        conn = incomingConn;
-        setupChat();
-        statusDisplay.innerText = "Друг подключился!";
-        goToMenu();
-    });
-}
+peer.on('connection', (connection) => {
+    conn = connection;
+    setupConnection();
+});
 
 connectBtn.onclick = () => {
-    const peerId = document.getElementById('peer-id-input').value;
-    if (!peerId) return alert("Введите ID!");
-    
-    conn = peer.connect(peerId);
-    setupChat();
-    statusDisplay.innerText = "Подключение...";
+    const friendId = peerInput.value;
+    conn = peer.connect(friendId);
+    setupConnection();
 };
 
-function setupChat() {
-    conn.on('open', () => {
-        statusDisplay.innerText = "Связь установлена!";
-        goToMenu();
-    });
-    conn.on('data', (data) => handleIncomingData(data));
-    conn.on('close', () => {
-        alert("Связь потеряна");
-        location.reload();
-    });
-}
-
-function skipConnection() {
-    goToMenu();
-    statusDisplay.innerText = "Одиночный режим (тест)";
-}
-
-function goToMenu() {
-    document.getElementById('setup-screen').classList.add('hidden');
-    document.getElementById('game-selection').classList.remove('hidden');
-}
-
-// --- Логика выбора игр ---
-function selectGame(gameName) {
-    renderGame(gameName);
-    if (conn && conn.open) {
-        conn.send({ type: 'switch-game', name: gameName });
-    }
-}
-
-function handleIncomingData(data) {
-    if (data.type === 'switch-game') {
-        renderGame(data.name);
-    }
-    if (data.type === 'move') {
-        updateGameSate(data.payload);
-    }
-}
-
-function renderGame(name) {
-    document.getElementById('game-selection').classList.add('hidden');
-    document.getElementById('game-container').classList.remove('hidden');
-    const area = document.getElementById('game-area');
-    document.getElementById('game-title').innerText = name.toUpperCase();
+function setupConnection() {
+    document.getElementById('menu').classList.add('hidden');
+    document.getElementById('game-stats').classList.remove('hidden');
     
-    area.innerHTML = ''; // Очистка
+    conn.on('data', (data) => {
+        // Получаем координаты другого игрока
+        players[data.id] = data;
+    });
+}
 
-    if (name === 'tictactoe') {
-        area.innerHTML = <div class="ttt-grid"> + 
-            Array(9).fill().map((_, i) => <div class="cell" onclick="makeMove(${i}) "id="c${i}"></div>).join('') + 
-            </div>;
-    } else if (name === 'clicker') {
-        area.innerHTML = <h3>Кликай быстрее!</h3><button class="huge-btn" onclick="makeMove('click')">КЛИК!</button><div id="score">0</div>;
-    } else if (name === 'guess') {
-        area.innerHTML = <h3>Угадай число 1-10</h3><input type="number" id="guessInput"><button onclick="makeMove(document.getElementById('guessInput').value)">Проверить</button>;
-    } else {
-        area.innerHTML = <h3>Игра ${name} в разработке</h3>;
+// --- УПРАВЛЕНИЕ (ДЖОЙСТИК) ---
+let moveDir = { x: 0, y: 0 };
+const stick = document.getElementById('joystick-stick');
+const base = document.getElementById('joystick-base');
+
+base.addEventListener('touchmove', (e) => {
+    const touch = e.touches[0];
+    const rect = base.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    let dx = touch.clientX - centerX;
+    let dy = touch.clientY - centerY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const maxDist = 40;
+
+    if (dist > maxDist) {
+        dx *= maxDist / dist;
+        dy *= maxDist / dist;
+    }
+
+    stick.style.transform = translate(${dx}px, ${dy}px);
+    moveDir.x = dx / maxDist;
+    moveDir.y = dy / maxDist;
+});
+
+base.addEventListener('touchend', () => {
+    stick.style.transform = translate(0, 0);
+    moveDir = { x: 0, y: 0 };
+});
+
+// Клавиатура для ПК
+window.addEventListener('keydown', (e) => {
+    if(e.code === 'KeyW') moveDir.y = -1;
+    if(e.code === 'KeyS') moveDir.y = 1;
+    if(e.code === 'KeyA') moveDir.x = -1;
+    if(e.code === 'KeyD') moveDir.x = 1;
+});
+window.addEventListener('keyup', () => moveDir = { x: 0, y: 0 });
+
+// --- ИГРОВОЙ ЦИКЛ ---
+function update() {
+    if (myId && players[myId]) {
+        players[myId].x += moveDir.x * 5;
+        players[myId].y += moveDir.y * 5;
+
+        // Отправка данных другу
+        if (conn && conn.open) {
+            conn.send({ id: myId, x: players[myId].x, y: players[myId].y });
+        }
+    }
+    draw();
+    requestAnimationFrame(update);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Рисуем игроков
+    for (let id in players) {
+        const p = players[id];
+        ctx.fillStyle = (id === myId) ? '#00ff00' : '#ff0000'; // Isaac/Dota style
+        ctx.fillRect(p.x, p.y, 40, 40); // Майнкрафт-куб
+        
+        // Маленький декор "слез" Isaac
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(p.x + 20, p.y - 10, 5, 0, Math.PI*2);
+        ctx.fill();
     }
 }
 
-// Запуск Peer при загрузке
-initPeer();
+update();
