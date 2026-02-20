@@ -3,97 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Novella Maker Pro</title>
+    <title>P2P Game</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <div id="dynamic-bg" class="glass-bg"></div>
-    <div class="app-container">
-        <div class="top-nav">
-            <div class="mode-selector">
-                <button id="btn-author" class="active" onclick="switchRole('author')">Автор</button>
-                <button id="btn-player" onclick="switchRole('player')">Игрок</button>
-            </div>
-            <div class="offline-switch">
-                <span>Оффлайн</span>
-                <label class="switch">
-                    <input type="checkbox" id="offline-mode">
-                    <span class="slider"></span>
-                </label>
-            </div>
+    <div class="container">
+        <h1>Сетевая игра</h1>
+        
+        <div id="setup">
+            <p>Ваш ID: <strong id="my-id">...</strong></p>
+            <input type="text" id="peer-id-input" placeholder="Введите ID друга">
+            <button id="connect-btn">Подключиться</button>
         </div>
 
-        <main id="author-panel" class="main-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h2 style="margin:0; font-size: 1.2rem;">Создание сцены</h2>
-                <button id="idea-btn" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">💡</button>
-            </div>
-            
-            <div class="settings-row" style="display: flex; gap: 10px;">
-                <input type="text" id="location-input" placeholder="Локация...">
-                <input type="color" id="bg-color" value="#6366f1" style="width: 60px; padding: 2px; height: 45px;">
-            </div>
+        <div id="game-status">Ожидание подключения...</div>
 
-            <div class="img-upload-zone" style="margin-bottom: 10px;">
-                <input type="file" id="image-input" accept="image/*" hidden>
-                <button onclick="document.getElementById('image-input').click()" class="mode-btn" style="width:100%; margin-bottom: 5px;">🖼️ Добавить картинку</button>
-                <div id="img-preview-container" style="display:none; position:relative;">
-                    <img id="preview-src" src="" style="width:100%; border-radius:12px; margin-top:5px; border: 1px solid rgba(255,255,255,0.1);">
-                    <button onclick="clearImage()" style="position:absolute; top:10px; right:10px; background:var(--accent); border:none; color:white; border-radius:50%; width:25px; height:25px; cursor:pointer;">×</button>
-                </div>
-            </div>
-
-            <textarea id="quest-text" placeholder="Описание ситуации..."></textarea>
-
-            <select id="action-type" onchange="updateActionUI()" style="margin-bottom: 15px;">
-                <option value="choice">🔘 Обычные варианты</option>
-                <option value="timed_choice">⏳ Варианты на время</option>
-                <option value="clicker">⚡ QTE Кликер</option>
-                <option value="text_input">✍️ Свой ответ игрока</option>
-            </select>
-
-            <div id="ui-choice" class="interaction-setup">
-                <div id="options-list">
-                    <input type="text" class="opt-input" placeholder="Вариант А">
-                    <input type="text" class="opt-input" placeholder="Вариант Б">
-                </div>
-                <div class="opt-controls">
-                    <button id="add-opt">+ Вариант</button>
-                    <button id="rem-opt">- Удалить</button>
-                </div>
-            </div>
-
-            <div id="ui-timed" style="display:none;">
-                <input type="number" id="time-limit" placeholder="Секунд на выбор (макс 60)">
-            </div>
-
-            <div id="ui-clicker" style="display:none;">
-                <div style="display:flex; gap:10px;">
-                    <input type="number" id="qte-target" placeholder="Кликов">
-                    <input type="number" id="qte-time" placeholder="Секунд">
-                </div>
-            </div>
-            
-            <button id="send-btn" class="primary-btn">ОТПРАВИТЬ СЦЕНУ</button>
-            <div id="answers-history" style="margin-top: 20px;"></div>
-        </main>
-
-        <main id="player-panel" class="main-card" style="display:none;">
-            <div id="player-loc" class="location-badge">Локация</div>
-            <div id="player-img-box" style="display:none; margin-bottom:15px;">
-                <img id="view-img" src="" style="width:100%; border-radius:15px;">
-            </div>
-            <div class="novella-view">
-                <div id="player-story-text" class="story-text">Ожидание хода...</div>
-                <div id="timer-bar" class="timer-bar" style="display:none;">
-                    <div id="timer-fill" class="timer-fill"></div>
-                </div>
-                <div id="player-actions"></div>
-            </div>
-        </main>
-
-        <div id="status-bar">Система: Загрузка...</div>
+        <div id="board" class="hidden">
+            <div class="cell" data-index="0"></div>
+            <div class="cell" data-index="1"></div>
+            <div class="cell" data-index="2"></div>
+            <div class="cell" data-index="3"></div>
+            <div class="cell" data-index="4"></div>
+            <div class="cell" data-index="5"></div>
+            <div class="cell" data-index="6"></div>
+            <div class="cell" data-index="7"></div>
+            <div class="cell" data-index="8"></div>
+        </div>
     </div>
     <script src="script.js"></script>
 </body>
