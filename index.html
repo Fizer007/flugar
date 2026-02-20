@@ -3,34 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P Game</title>
+    <title>Multi-Game Hub</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>Сетевая игра</h1>
-        
-        <div id="setup">
-            <p>Ваш ID: <strong id="my-id">...</strong></p>
-            <input type="text" id="peer-id-input" placeholder="Введите ID друга">
-            <button id="connect-btn">Подключиться</button>
+    <div id="setup-screen">
+        <h1>Multi-Game Hub</h1>
+        <div class="connection-box">
+            <p>Ваш ID: <span id="my-id">...</span></p>
+            <input type="text" id="peer-id-input" placeholder="ID друга">
+            <button onclick="connectToPeer()">Подключиться</button>
         </div>
+        <p id="status">Ожидание подключения...</p>
+    </div>
 
-        <div id="game-status">Ожидание подключения...</div>
-
-        <div id="board" class="hidden">
-            <div class="cell" data-index="0"></div>
-            <div class="cell" data-index="1"></div>
-            <div class="cell" data-index="2"></div>
-            <div class="cell" data-index="3"></div>
-            <div class="cell" data-index="4"></div>
-            <div class="cell" data-index="5"></div>
-            <div class="cell" data-index="6"></div>
-            <div class="cell" data-index="7"></div>
-            <div class="cell" data-index="8"></div>
+    <div id="game-selection" class="hidden">
+        <h2>Выберите игру</h2>
+        <div class="grid">
+            <button onclick="selectGame('tictactoe')">Крестики-Нолики</button>
+            <button onclick="selectGame('clicker')">Кликер-Баттл</button>
+            <button onclick="selectGame('guess')">Угадай число</button>
+            <button onclick="selectGame('reaction')">Тест реакции</button>
+            <button onclick="selectGame('pong')">Мини-Футбол</button>
         </div>
     </div>
+
+    <div id="game-container" class="hidden">
+        <button onclick="backToMenu()" class="back-btn">↩ Меню</button>
+        <div id="game-area"></div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>
