@@ -1,120 +1,82 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const peer = new Peer(); // Создаем объект Peer
+let conn;
+let mySymbol = ''; // 'X' или 'O'
+let board = Array(9).fill(null);
+let isMyTurn = false;
+
+// Элементы DOM
 const myIdDisplay = document.getElementById('my-id');
-const peerInput = document.getElementById('peer-id-input');
+const peerIdInput = document.getElementById('peer-id-input');
 const connectBtn = document.getElementById('connect-btn');
-const statusMsg = document.getElementById('status');
+const status = document.getElementById('game-status');
+const boardEl = document.getElementById('board');
+const cells = document.querySelectorAll('.cell');
 
-let peer, conn;
-let myRole = null; // 'sink' или 'sponge'
-let gameState = {
-    sink: { x: 100, y: 100, w: 80, h: 80 },
-    sponge: { x: 300, y: 300, w: 40, h: 50, hp: 100 }
-};
-
-// Инициализация PeerJS
-peer = new Peer();
-
+// 1. Получаем свой ID
 peer.on('open', (id) => {
     myIdDisplay.innerText = id;
 });
 
-// Когда кто-то подключается к нам
+// 2. Ждем входящего подключения (Ты — Хост)
 peer.on('connection', (connection) => {
     conn = connection;
-    myRole = 'sink'; // Хост всегда раковина
-    setupConnection();
-    startGame();
+    mySymbol = 'X';
+    isMyTurn = true;
+    setupGame();
 });
 
-// Когда мы подключаемся к другу
-connectBtn.onclick = () => {
-    const friendId = peerInput.value;
-    if (!friendId) return;
-    conn = peer.connect(friendId);
-    myRole = 'sponge'; // Гость - мочалка
-    setupConnection();
-    conn.on('open', startGame);
-};
+// 3. Инициируем подключение (Ты — Гость)
+connectBtn.addEventListener('click', () => {
+    const peerId = peerIdInput.value;
+    conn = peer.connect(peerId);
+    mySymbol = 'O';
+    isMyTurn = false;
+    setupGame();
+});
 
-function setupConnection() {
+function setupGame() {
+    status.innerText = Игра началась! Вы играете за: ${mySymbol};
+    boardEl.classList.remove('hidden');
+    document.getElementById('setup').classList.add('hidden');
+    handleData();
+}
+
+// Обработка данных
+function handleData() {
     conn.on('data', (data) => {
-        if (myRole === 'sink') {
-            gameState.sponge.x = data.x;
-            gameState.sponge.y = data.y;
-        } else {
-            gameState.sink.x = data.x;
-            gameState.sink.y = data.y;
-            gameState.sponge.hp = data.hp;
+        if (data.type === 'move') {
+            updateBoard(data.index, mySymbol === 'X' ? 'O' : 'X');
+            isMyTurn = true;
+            status.innerText = "Твой ход!";
         }
     });
 }
 
-// Управление
-const keys = {};
-window.onkeydown = (e) => keys[e.code] = true;
-window.onkeyup = (e) => keys[e.code] = false;
+// Ход игрока
+cells.forEach(cell => {
+    cell.addEventListener('click', (e) => {
+        const index = e.target.dataset.index;
+        if (isMyTurn && !board[index]) {
+            updateBoard(index, mySymbol);
+            conn.send({ type: 'move', index: index });
+            isMyTurn = false;
+            status.innerText = "Ожидание хода противника...";
+        }
+    });
+});
 
-// Для мобилок
-if ('ontouchstart' in window) {
-    document.getElementById('joystick-zone').style.display = 'block';
+function updateBoard(index, symbol) {
+    board[index] = symbol;
+    cells[index].innerText = symbol;
+    checkWinner();
 }
 
-let moveDir = { x: 0, y: 0 };
-// (Тут можно добавить логику джойстика, но для краткости ограничимся WASD и тачем)
-
-function update() {
-    const speed = 5;
-    let moved = false;
-    const player = gameState[myRole];
-
-    if (keys['KeyW'] || keys['ArrowUp']) { player.y -= speed; moved = true; }
-    if (keys['KeyS'] || keys['ArrowDown']) { player.y += speed; moved = true; }
-    if (keys['KeyA'] || keys['ArrowLeft']) { player.x -= speed; moved = true; }
-    if (keys['KeyD'] || keys['ArrowRight']) { player.x += speed; moved = true; }
-
-    // Логика столкновения (только на стороне хоста для честности)
-    if (myRole === 'sink') {
-        const s = gameState.sink;
-        const sp = gameState.sponge;
-        if (sp.x > s.x && sp.x < s.x + s.w && sp.y > s.y && sp.y < s.y + s.h) {
-            sp.hp -= 0.5; // Мочалка сохнет в раковине!
+function checkWinner() {
+    const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+    for (let combo of wins) {
+        if (board[combo[0]] && board[combo[0]] === board[combo[1]] && board[combo[0]] === board[combo[2]]) {
+            status.innerText = Победил ${board[combo[0]]}!;
+            isMyTurn = false;
         }
     }
-
-    if (conn && conn.open) {
-        conn.send({ x: player.x, y: player.y, hp: gameState.sponge.hp });
-    }
-}
-
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Рисуем Раковину (Прямоугольник с дыркой)
-    ctx.fillStyle = '#bdc3c7';
-    ctx.fillRect(gameState.sink.x, gameState.sink.y, gameState.sink.w, gameState.sink.h);
-    ctx.fillStyle = '#34495e';
-    ctx.beginPath();
-    ctx.arc(gameState.sink.x + 40, gameState.sink.y + 40, 10, 0, Math.PI*2);
-    ctx.fill();
-
-    // Рисуем Мочалку (Желтая и пористая)
-    ctx.fillStyle = '#f1c40f';
-    ctx.fillRect(gameState.sponge.x, gameState.sponge.y, gameState.sponge.w, gameState.sponge.h);
-    
-    document.getElementById('hp-fill').style.width = gameState.sponge.hp + '%';
-    
-    requestAnimationFrame(() => {
-        update();
-        draw();
-    });
-}
-
-function startGame() {
-    document.getElementById('menu').style.display = 'none';
-    document.getElementById('game-container').style.display = 'block';
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    document.getElementById('role-tag').innerText = "Вы: " + (myRole === 'sink' ? "РАКОВИНА" : "МОЧАЛКА");
-    draw();
 }
