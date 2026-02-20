@@ -1,91 +1,25 @@
-body {
-    margin: 0;
-    overflow: hidden;
-    background: #e0f7fa;
-    font-family: sans-serif;
-    touch-action: none;
+body { font-family: sans-serif; display: flex; justify-content: center; background: #222; color: white; }
+.container { text-align: center; margin-top: 50px; }
+.hidden { display: none !important; }
+
+#board {
+    display: grid;
+    grid-template-columns: repeat(3, 100px);
+    gap: 5px;
+    margin-top: 20px;
 }
 
-#menu {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    background: white;
-    padding: 20px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    z-index: 10;
-}
-
-input {
-    padding: 10px;
-    width: 200px;
-    border: 2px solid #00acc1;
-    border-radius: 5px;
-    margin-bottom: 10px;
-}
-
-button {
-    padding: 10px 20px;
-    background: #00acc1;
-    color: white;
-    border: none;
-    border-radius: 5px;
+.cell {
+    width: 100px;
+    height: 100px;
+    background: #444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
     cursor: pointer;
 }
 
-#game-container { position: relative; width: 100vw; height: 100vh; }
-
-canvas { display: block; background: #fff; }
-
-#ui {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    pointer-events: none;
-}
-
-#hp-bar {
-    width: 200px;
-    height: 20px;
-    background: #ccc;
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-#hp-fill {
-    width: 100%;
-    height: 100%;
-    background: #4caf50;
-    transition: width 0.2s;
-}
-
-/* Джойстик */
-#joystick-zone {
-    position: absolute;
-    bottom: 40px;
-    left: 40px;
-    width: 120px;
-    height: 120px;
-    display: none; /* Включим через JS для тач-устройств */
-}
-
-#joystick-base {
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.1);
-    border-radius: 50%;
-    position: relative;
-}
-
-#joystick-stick {
-    width: 50px;
-    height: 50px;
-    background: rgba(0,0,0,0.3);
-    border-radius: 50%;
-    position: absolute;
-    top: 35px;
-    left: 35px;
-}
+.cell:hover { background: #555; }
+input { padding: 8px; border-radius: 4px; border: none; }
+button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
