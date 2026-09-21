@@ -1,9 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp, deleteField } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         class SoundEngine {
             constructor() {
@@ -121,7 +119,7 @@ import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.g
 
         const audio = new SoundEngine();
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'isaac-flash-app';
+        const appId = firebaseConfig?.projectId || 'isaac-flash-app';
         const firebaseConfig = window.ISAAC_FIREBASE_CONFIG || null;
 
         let db = null;
@@ -182,16 +180,16 @@ function saveRoomToUrl(roomId) {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                await signInAnonymously(auth);
                 isAuthReady = true;
                 console.log("Firebase online connected successfully");
             } catch (err) {
-                console.warn("Firebase offline fallback:", err);
+                console.error("Firebase initialization failed:", err);
                 isAuthReady = false;
+                setTimeout(() => {
+                    const msg = err?.message || 'Неизвестная ошибка Firebase';
+                    showToast('Firebase: ' + msg);
+                }, 300);
             }
         }
 
@@ -440,7 +438,7 @@ function saveRoomToUrl(roomId) {
             }
             if (currentRoomId && db && isAuthReady) {
                 try {
-                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId);
+                    const roomRef = doc(db, 'rooms', currentRoomId);
                     const updateObj = {};
                     updateObj[`players.${myPlayerId}`] = null;
                     setDoc(roomRef, updateObj, { merge: true });
@@ -480,7 +478,15 @@ function saveRoomToUrl(roomId) {
             const cleanRoomId = normalizeRoomId(roomId);
             if (!cleanRoomId || roomJoinInProgress) return;
             roomJoinInProgress = true;
-            leaveCurrentRoom();
+            // Clean up the previous listener without clearing the new room URL.
+            if (roomSyncTimer) {
+                clearInterval(roomSyncTimer);
+                roomSyncTimer = null;
+            }
+            if (roomUnsubscribe) {
+                roomUnsubscribe();
+                roomUnsubscribe = null;
+            }
             currentRoomId = cleanRoomId;
             saveRoomToUrl(cleanRoomId);
             startScreenGame(cleanRoomId);
@@ -555,7 +561,7 @@ function saveRoomToUrl(roomId) {
                         await setDoc(roomRef, playerUpdate, { merge: true });
                     } catch(e) {}
                 }
-            }, 80);
+            }, 150);
         }
 
         function addChatMessage(sender, text, type = 'user') {
@@ -569,7 +575,7 @@ function saveRoomToUrl(roomId) {
             };
 
             if (currentRoomId && db && isAuthReady && type === 'user') {
-                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId);
+                const roomRef = doc(db, 'rooms', currentRoomId);
                 const updatedChats = [...chatLogs.slice(-25), msgObj];
                 setDoc(roomRef, { chatMessages: updatedChats }, { merge: true });
             } else {
