@@ -134,7 +134,7 @@
                 💬 <span id="btnToggleChatText">Чат</span>
             </button>
             <button id="btnBomb" class="bomb-btn">💣 <span>Бомба</span> <b id="uiBombCount">0</b></button>
-            <button id="btnD6" class="d6-btn">🎲 <span>D6</span> <b id="uiD6Count">0</b></button>
+            <button id="btnActive" class="active-btn hidden">◉ <span id="uiActiveName">D6</span> <b id="uiActiveCharge">6/6</b></button>
         </div>
 
         <!-- Main Game Canvas -->
@@ -154,6 +154,7 @@
         </div>
 
         <!-- Bottom Mobile Shoot Controls -->
+        <button id="mobileActive" class="mobile-active-btn hidden" type="button">D6<br><span id="mobileActiveCharge">6</span></button>
         <div id="mobileShooter" class="absolute bottom-4 right-4 sm:right-6 z-20 grid grid-cols-3 gap-1.5 w-28 h-28 sm:w-32 sm:h-32 opacity-90">
             <div></div>
             <button id="btnShootUp" class="shoot-btn">▲</button>
