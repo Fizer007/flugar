@@ -149,6 +149,11 @@
         let dummyDamageEvents = [];
         let activeBombs = [];
         const explodedBombIds = new Set();
+let d6Charges = 0;
+const D6_MAX_CHARGES = 6;
+const roomRerolls = new Map();
+let invulnerableUntil = 0;
+let knockbackX = 0, knockbackY = 0;
 
 
         function loadPeerJS() {
@@ -216,6 +221,17 @@
             } else if (packet.type === 'item_state') {
                 (packet.taken || []).forEach(k => takenItems.add(k));
                 renderItemHud();
+            } else if (packet.type === 'd6_state') {
+                d6Charges = Math.max(0, Math.min(D6_MAX_CHARGES, Number(packet.charges) || 0));
+                roomRerolls.clear();
+                Object.entries(packet.rerolls || {}).forEach(([k,v]) => roomRerolls.set(k, Number(v)||0));
+                renderItemHud();
+            } else if (packet.type === 'd6_reroll') {
+                if (packet.roomKey) {
+                    roomRerolls.set(packet.roomKey, Number(packet.roll) || 0);
+                    renderItemHud();
+                }
+                if (isRoomHost) broadcast(packet, senderId);
             } else if (packet.type === 'dummy_hit') {
                 const sameRoom = packet.rx === localPlayer.rx && packet.ry === localPlayer.ry;
                 if (sameRoom) registerDummyHit(packet.damage || 0, packet.x, packet.y, packet.ownerName || 'Player');
@@ -278,9 +294,8 @@
         }
 
         function updatePlayerCount() {
-            const sameRoomCount = Object.values(remotePlayers)
-                .filter(p => p.rx === localPlayer.rx && p.ry === localPlayer.ry).length;
-            document.getElementById('uiPlayerCount').innerText = String(sameRoomCount + 1);
+            // This counter is the whole online room/server population, not only the current room.
+            document.getElementById('uiPlayerCount').innerText = String(Object.keys(remotePlayers).length + 1);
         }
 
         async function createNetworkRoom(roomId, auto = false) {
@@ -673,6 +688,10 @@
             networkProjectileIds.clear();
             takenItems.clear();
             inventory = {coins:0,keys:0,bombs:0};
+            d6Charges = 0;
+            roomRerolls.clear();
+            invulnerableUntil = 0;
+            knockbackX = knockbackY = 0;
             localPlayer.stats = { damage:3.5, tears:2.5, speed:1, range:1, shotSpeed:1, luck:0 };
             renderItemHud();
             renderChatMessages();
@@ -786,6 +805,10 @@
             visitedRooms = new Set(["0,0"]);
             projectiles = [];
             activeBombs = [];
+            d6Charges = 0;
+            roomRerolls.clear();
+            invulnerableUntil = 0;
+            knockbackX = knockbackY = 0;
             renderItemHud();
 
             document.getElementById('screenLobby').classList.add('hidden');
@@ -823,6 +846,7 @@
             if (k === 'ArrowLeft') { keys.arrowLeft = true; e.preventDefault(); }
             if (k === 'ArrowRight') { keys.arrowRight = true; e.preventDefault(); }
             if (k === 'e' || k === 'E') { e.preventDefault(); placeBomb(); }
+            if (k === ' ' && !e.repeat) { e.preventDefault(); useD6(); }
         });
 
         window.addEventListener('keyup', (e) => {
@@ -952,7 +976,9 @@
         }
 
         function getGoldenItems(rx, ry) {
-            const h = Math.floor(coordHash(rx, ry) * 1000000);
+            const base = Math.floor(coordHash(rx, ry) * 1000000);
+            const reroll = roomRerolls.get(`${rx},${ry}`) || 0;
+            const h = (base + reroll * 7919) >>> 0;
             const count = 2 + (h % 2);
             const items = [];
             const slots = [
@@ -973,6 +999,28 @@
 
         function goldenRoomItems() {
             return isGoldenRoom(localPlayer.rx, localPlayer.ry) ? getGoldenItems(localPlayer.rx, localPlayer.ry) : [];
+        }
+
+        function useD6() {
+            if (localPlayer.character !== 'isaac') {
+                showToast('D6 доступен только Айзеку');
+                return;
+            }
+            if (d6Charges < D6_MAX_CHARGES) {
+                showToast(`D6 ещё заряжается: ${d6Charges}/${D6_MAX_CHARGES}`);
+                return;
+            }
+            if (!isGoldenRoom(localPlayer.rx, localPlayer.ry)) {
+                showToast('D6 работает только в комнате с предметом');
+                return;
+            }
+            const key = roomKey();
+            roomRerolls.set(key, (roomRerolls.get(key) || 0) + 1);
+            d6Charges = 0;
+            renderItemHud();
+            showToast('🎲 D6: предметы комнаты перероллены');
+            const packet = {type:'d6_reroll', roomKey:key, roll:roomRerolls.get(key)};
+            if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection, packet);
         }
 
         function itemTaken(roomKey, itemId) {
@@ -1040,10 +1088,12 @@
                 row.innerHTML=`<span>${label}</span><b>${val}</b>`; list.appendChild(row);
             });
             const inv=document.createElement('div'); inv.className='item-inventory';
-            inv.textContent=`🪙 ${inventory.coins}  🔑 ${inventory.keys}  💣 ${inventory.bombs}`;
+            inv.textContent=`🪙 ${inventory.coins}  🔑 ${inventory.keys}  💣 ${inventory.bombs}  🎲 ${d6Charges}/${D6_MAX_CHARGES}`;
             list.appendChild(inv);
             const bombCount = document.getElementById('uiBombCount');
             if (bombCount) bombCount.textContent = inventory.bombs;
+            const d6Count = document.getElementById('uiD6Count');
+            if (d6Count) d6Count.textContent = d6Charges;
         }
 
         function setupItemMenu() {
@@ -1066,6 +1116,7 @@
         }
 
         document.getElementById('btnBomb')?.addEventListener('click', () => { audio.init(); placeBomb(); });
+document.getElementById('btnD6')?.addEventListener('click', () => { audio.init(); useD6(); });
 
         // PeerJS запускаем только после инициализации localPlayer и HUD.
         autoJoinRoom().catch(err => {
@@ -1267,6 +1318,15 @@
 
             localPlayer.isMoving = dx !== 0 || dy !== 0;
 
+            // Spike knockback / brief invulnerability.
+            const nowMs = performance.now();
+            if (nowMs < invulnerableUntil) {
+                localPlayer.x += knockbackX * dt;
+                localPlayer.y += knockbackY * dt;
+                const damp = Math.pow(0.02, dt);
+                knockbackX *= damp; knockbackY *= damp;
+            }
+
             if (localPlayer.isMoving) {
                 const prevTimer = localPlayer.walkTimer;
                 localPlayer.walkTimer += dt * 10;
@@ -1281,7 +1341,9 @@
 
                 if (!activeCheats.has('IDDQD')) {
                     const obstacles = getRoomObstacles(localPlayer.rx, localPlayer.ry);
-                    obstacles.forEach(obs => {
+                    if (localPlayer.character === 'azazel') {
+                        // Azazel flies: rocks do not block him.
+                    } else obstacles.forEach(obs => {
                         if (obs.type === 'rock') {
                             const closestX = Math.max(obs.x - obs.w/2, Math.min(newX, obs.x + obs.w/2));
                             const closestY = Math.max(obs.y - obs.h/2, Math.min(newY, obs.y + obs.h/2));
@@ -1294,6 +1356,21 @@
                                     newX = closestX + (distX / distance) * localPlayer.radius;
                                     newY = closestY + (distY / distance) * localPlayer.radius;
                                 }
+                            }
+                        } else if (obs.type === 'spike' && nowMs >= invulnerableUntil) {
+                            const dxs = newX - obs.x;
+                            const dys = newY - obs.y;
+                            const dist = Math.hypot(dxs, dys);
+                            const hitRadius = localPlayer.radius + Math.max(obs.w, obs.h) * 0.34;
+                            if (dist < hitRadius) {
+                                const nx = dist > 0.01 ? dxs / dist : (dx || 1);
+                                const ny = dist > 0.01 ? dys / dist : (dy || 0);
+                                invulnerableUntil = nowMs + 1400;
+                                knockbackX = nx * 360;
+                                knockbackY = ny * 360;
+                                newX = obs.x + nx * (hitRadius + 5);
+                                newY = obs.y + ny * (hitRadius + 5);
+                                showToast('⚠️ Шипы!');
                             }
                         }
                     });
@@ -1355,11 +1432,15 @@
             projectiles = [];
             activeBombs = [];
             const coordKey = `${localPlayer.rx},${localPlayer.ry}`;
-            visitedRooms.add(coordKey);
+            const isNewRoom = !visitedRooms.has(coordKey);
+            if (isNewRoom) {
+                visitedRooms.add(coordKey);
+                if (localPlayer.character === 'isaac') {
+                    d6Charges = Math.min(D6_MAX_CHARGES, d6Charges + 1);
+                }
+            }
             document.getElementById('uiCoord').innerText = `(${localPlayer.rx}, ${localPlayer.ry})`;
-            const sameRoomCount = Object.values(remotePlayers)
-                .filter(p => p.rx === localPlayer.rx && p.ry === localPlayer.ry).length;
-            document.getElementById('uiPlayerCount').innerText = String(sameRoomCount + 1);
+            updatePlayerCount();
             
             const currentTheme = getRoomTheme(localPlayer.rx, localPlayer.ry);
             document.getElementById('uiRoomThemeTitle').innerText = isGoldenRoom(localPlayer.rx, localPlayer.ry) ? '💛 Золотая комната' : (isKeeperRoom(localPlayer.rx, localPlayer.ry) ? '🎯 Комната Дамми' : currentTheme.label);
@@ -1533,16 +1614,25 @@
 
         function drawFlashCharacter(x, y, charKey, name, walkTimer, isMoving) {
             ctx.save();
+            if (charKey === localPlayer.character && x === localPlayer.x && y === localPlayer.y && performance.now() < invulnerableUntil) {
+                ctx.globalAlpha = 0.48 + 0.42 * Math.abs(Math.sin(performance.now() / 70));
+            }
 
             const legOffset = isMoving ? Math.sin(walkTimer) * 8 : 0;
             const bodyBob = isMoving ? Math.abs(Math.sin(walkTimer * 2)) * 3 : 0;
             const charInfo = CHARACTERS[charKey] || CHARACTERS.isaac;
             const headY = y - 8 - bodyBob;
 
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.fillStyle = charKey === 'azazel' ? 'rgba(0, 0, 0, 0.22)' : 'rgba(0, 0, 0, 0.4)';
             ctx.beginPath();
-            ctx.ellipse(x, y + 22, 18, 7, 0, 0, Math.PI * 2);
+            ctx.ellipse(x, charKey === 'azazel' ? y + 30 : y + 22, charKey === 'azazel' ? 23 : 18, charKey === 'azazel' ? 5 : 7, 0, 0, Math.PI * 2);
             ctx.fill();
+            if (charKey === 'azazel') {
+                ctx.fillStyle = 'rgba(30,41,59,.85)';
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.ellipse(x-17,y+2,11,6,-0.35,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(x+17,y+2,11,6,0.35,0,Math.PI*2); ctx.fill(); ctx.stroke();
+            }
 
             if (charKey === 'lost') {
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
