@@ -198,19 +198,9 @@
                     if (p && p.id && p.id !== myPlayerId) remotePlayers[p.id] = p;
                 });
                 updatePlayerCount();
-            } else if (packet.type === 'coin_taken') {
-                if (packet.key) roomCoins.add(packet.key);
-                if (isRoomHost) broadcast(packet, senderId);
-            } else if (packet.type === 'shop_bought') {
-                if (packet.key) shopPurchases.add(packet.key);
-                if (isRoomHost) broadcast(packet, senderId);
-            } else if (packet.type === 'beggar_done') {
-                if (packet.key) beggarDone.add(packet.key);
-                if (isRoomHost) broadcast(packet, senderId);
             } else if (packet.type === 'd6_reroll') {
-                if (packet.roomKey && packet.items) goldenRoomOverrides.set(packet.roomKey, packet.items);
-                renderItemHud();
-                if (isRoomHost) broadcast(packet, senderId);
+                if(packet.roomKey && packet.items) goldenRoomOverrides.set(packet.roomKey,packet.items);
+                if(isRoomHost) broadcast(packet,senderId);
             } else if (packet.type === 'tear') {
                 if (packet.projectile && packet.projectile.ownerId !== myPlayerId && packet.projectile.rx === localPlayer.rx && packet.projectile.ry === localPlayer.ry) {
                     const id = packet.projectile.id;
@@ -432,8 +422,8 @@
             cain: { id: 'cain', name: 'Cain', skin: '#fef08a', speed: 230, attackType: 'tear', tearColor: '#fbbf24', desc: 'Золотые волосы • Повязка на глаз', avatar: '👁️' },
             tricky: { id: 'tricky', name: 'Tricky', skin: '#15803d', speed: 235, attackType: 'fire', tearColor: '#22c55e', desc: 'Зелёный клоун • Стальная челюсть', avatar: '🤡' },
             sanford: { id: 'sanford', name: 'Sanford', skin: '#fdba74', speed: 225, attackType: 'bullet', tearColor: '#fb923c', desc: 'Оранжевая бандана • Тёмные очки', avatar: '🧣' },
-            lost: { id: 'lost', name: 'The Lost', skin: '#f8fafc', speed: 245, attackType: 'tear', tearColor: '#e2e8f0', desc: 'Парящий призрак • Полёт', avatar: '👻' },
-            lilith: { id: 'lilith', name: 'Lilith', skin: '#7f1d1d', speed: 210, attackType: 'tear', tearColor: '#a855f7', desc: 'Инкубус атакует вместо неё', avatar: '🩸' }
+            lost: { id: 'lost', name: 'The Lost', skin: '#f8fafc', speed: 245, attackType: 'tear', tearColor: '#e2e8f0', desc: 'Парящий призрак • Белая аура', avatar: '👻' },
+            lilith: { id: 'lilith', name: 'Lilith', skin: '#7f1d1d', speed: 210, attackType: 'tear', tearColor: '#a855f7', desc: 'Инкубус рядом • стреляет вместо неё', avatar: '🩸' }
         };
 
         const ROOM_WIDTH = 800;
@@ -566,10 +556,6 @@
         let chatLogs = [];
         let d6Charges = 6;
         const goldenRoomOverrides = new Map();
-        let roomCoins = new Set();
-        let interactedRooms = new Set();
-        let shopPurchases = new Set();
-        let beggarDone = new Set();
 
         let isChatVisible = true;
         const chatBox = document.getElementById('chatBoxContainer');
@@ -625,7 +611,34 @@
         }
 
         buildCharacterSelector();
-        renderActiveButton();
+
+        function renderActiveButton(){
+            const visible = localPlayer.character === 'isaac';
+            ['btnActive','mobileActive'].forEach(id=>{
+                const b=document.getElementById(id); if(!b) return;
+                b.classList.toggle('hidden', !visible);
+                if(visible) b.innerHTML = `🎲 D6 <span>${d6Charges}/6</span>`;
+            });
+        }
+
+        function useD6(){
+            if(localPlayer.character !== 'isaac') return;
+            if(d6Charges < 6){ showToast(`D6: ${d6Charges}/6`); return; }
+            if(!isGoldenRoom(localPlayer.rx, localPlayer.ry)){ showToast('D6 работает в золотой комнате'); return; }
+            const key = `${localPlayer.rx},${localPlayer.ry}`;
+            const items = getGoldenItems(localPlayer.rx,localPlayer.ry).map((it,i)=>{
+                if(it.type !== 'item' || itemTaken(key,it.itemId)) return it;
+                const pool=ITEM_POOL.filter(x=>x.id!==it.id);
+                return {...pool[(i*3+Math.floor(coordHash(localPlayer.rx+i+17,localPlayer.ry-i-11)*pool.length))%pool.length],itemId:it.itemId,type:'item',x:it.x,y:it.y};
+            });
+            goldenRoomOverrides.set(key,items);
+            d6Charges=0; renderActiveButton();
+            const packet={type:'d6_reroll',roomKey:key,items};
+            if(isRoomHost) broadcast(packet); else sendToConnection(hostConnection,packet);
+            showToast('🎲 D6: предметы перероллены');
+        }
+        document.getElementById('btnActive')?.addEventListener('click',()=>{audio.init();useD6();});
+        document.getElementById('mobileActive')?.addEventListener('click',()=>{audio.init();useD6();});
 
         document.getElementById('btnApplyCheat').addEventListener('click', () => {
             const input = document.getElementById('inputCheatCode');
@@ -693,12 +706,8 @@
             networkProjectileIds.clear();
             takenItems.clear();
             goldenRoomOverrides.clear();
-            roomCoins.clear();
-            interactedRooms.clear();
-            shopPurchases.clear();
-            beggarDone.clear();
-            inventory = {coins:0,keys:0,bombs:0};
             d6Charges = 6;
+            inventory = {coins:0,keys:0,bombs:0};
             localPlayer.stats = { damage:3.5, tears:2.5, speed:1, range:1, shotSpeed:1, luck:0 };
             renderItemHud();
             renderChatMessages();
@@ -799,49 +808,11 @@
 
         document.querySelectorAll('.quick-chip').forEach(btn => {
             btn.addEventListener('click', () => {
-                let text = btn.innerText;
-                if (text.includes('Я здесь')) text = `Я здесь! 📍 Локация: ${getLocationLabel()} | координаты (${localPlayer.rx}, ${localPlayer.ry})`;
-                addChatMessage(localPlayer.name, text, 'user');
+                const txt = btn.innerText.includes('Я здесь') ? `Я здесь! 📍 ${isGoldenRoom(localPlayer.rx,localPlayer.ry)?'Золотая комната':getRoomTheme(localPlayer.rx,localPlayer.ry).label} (${localPlayer.rx}, ${localPlayer.ry})` : btn.innerText;
+                addChatMessage(localPlayer.name, txt, 'user');
                 audio.playChat();
             });
         });
-
-        function getLocationLabel() {
-            if (isGoldenRoom(localPlayer.rx, localPlayer.ry)) return 'Золотая комната';
-            if (isKeeperRoom(localPlayer.rx, localPlayer.ry)) return 'Комната Дамми';
-            if (isShopRoom(localPlayer.rx, localPlayer.ry)) return 'Магазин';
-            if (isBeggarRoom(localPlayer.rx, localPlayer.ry)) return 'Комната Попрошайки';
-            return getRoomTheme(localPlayer.rx, localPlayer.ry).label;
-        }
-
-        function renderActiveButton() {
-            const ids=['btnActive','mobileActive'];
-            ids.forEach(id=>{
-                const b=document.getElementById(id); if(!b) return;
-                const visible=localPlayer.character==='isaac';
-                b.classList.toggle('hidden',!visible);
-                if(visible) b.innerHTML=`🎲 D6 <span>${d6Charges}/6</span>`;
-            });
-        }
-
-        function useD6() {
-            if(localPlayer.character!=='isaac') return;
-            if(d6Charges<6) { showToast(`D6 заряжен: ${d6Charges}/6`); return; }
-            if(!isGoldenRoom(localPlayer.rx,localPlayer.ry)) { showToast('D6 работает только в золотой комнате'); return; }
-            const key=roomKey();
-            const base=getGoldenItems(localPlayer.rx,localPlayer.ry);
-            const next=base.map((item,i)=>{
-                if(item.type!=='item' || itemTaken(key,item.itemId)) return item;
-                const pool=ITEM_POOL.filter(x=>x.id!==item.id);
-                const h=Math.floor(coordHash(localPlayer.rx+i+19,localPlayer.ry-i-7)*pool.length);
-                return {...pool[Math.max(0,Math.min(pool.length-1,h))], itemId:item.itemId, type:'item', x:item.x, y:item.y};
-            });
-            goldenRoomOverrides.set(key,next);
-            d6Charges=0; renderActiveButton();
-            const packet={type:'d6_reroll',roomKey:key,items:next};
-            if(isRoomHost) broadcast(packet); else sendToConnection(hostConnection,packet);
-            showToast('🎲 D6: предметы перероллены');
-        }
 
         function startScreenGame(roomId) {
             localPlayer.rx = 0;
@@ -849,12 +820,7 @@
             localPlayer.x = ROOM_WIDTH / 2;
             localPlayer.y = ROOM_HEIGHT / 2;
             visitedRooms = new Set(["0,0"]);
-            d6Charges = 6;
-            goldenRoomOverrides.clear();
-            roomCoins.clear();
-            interactedRooms.clear();
-            shopPurchases.clear();
-            beggarDone.clear();
+            d6Charges = 6; goldenRoomOverrides.clear();
             projectiles = [];
             activeBombs = [];
             renderItemHud();
@@ -875,7 +841,6 @@
                 document.getElementById('uiPlayerCount').innerText = "1";
             }
 
-            renderActiveButton();
             const charInfo = CHARACTERS[localPlayer.character] || CHARACTERS.isaac;
             document.getElementById('uiCharTitle').innerText = charInfo.name;
             document.getElementById('uiCoord').innerText = '(0, 0)';
@@ -896,7 +861,6 @@
             if (k === 'ArrowRight') { keys.arrowRight = true; e.preventDefault(); }
             if (k === ' '){ e.preventDefault(); useD6(); }
             if (k === 'e' || k === 'E') { e.preventDefault(); placeBomb(); }
-            if (k === 'f' || k === 'F') { e.preventDefault(); interactNearby(); }
         });
 
         window.addEventListener('keyup', (e) => {
@@ -1046,7 +1010,8 @@
         }
 
         function goldenRoomItems() {
-            return isGoldenRoom(localPlayer.rx, localPlayer.ry) ? getGoldenItemsOverridden(localPlayer.rx, localPlayer.ry) : [];
+            if(!isGoldenRoom(localPlayer.rx,localPlayer.ry)) return [];
+            return goldenRoomOverrides.get(`${localPlayer.rx},${localPlayer.ry}`) || getGoldenItems(localPlayer.rx,localPlayer.ry);
         }
 
         function itemTaken(roomKey, itemId) {
@@ -1089,27 +1054,7 @@
                     const packet = {type:'item_taken', roomKey:key, itemId:item.itemId};
                     if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection, packet);
                     renderItemHud();
-                    // light knockback after pickup
-                    const dx=localPlayer.x-item.x, dy=localPlayer.y-item.y, d=Math.hypot(dx,dy)||1;
-                    localPlayer.x=Math.max(WALL_THICKNESS+localPlayer.radius,Math.min(ROOM_WIDTH-WALL_THICKNESS-localPlayer.radius,localPlayer.x+dx/d*10));
-                    localPlayer.y=Math.max(WALL_THICKNESS+localPlayer.radius,Math.min(ROOM_HEIGHT-WALL_THICKNESS-localPlayer.radius,localPlayer.y+dy/d*10));
-                    addChatMessage('Система',`${localPlayer.name} получил ${item.name}`,'system');
                     break;
-                }
-            }
-            const ckey=`coin:${localPlayer.rx},${localPlayer.ry}`;
-            if(hasRoomCoin(localPlayer.rx,localPlayer.ry)&&!roomCoins.has(ckey)){
-                const cp=roomCoinPos(localPlayer.rx,localPlayer.ry);
-                if(Math.hypot(localPlayer.x-cp.x,localPlayer.y-cp.y)<42){
-                    inventory.coins++; roomCoins.add(ckey); renderItemHud(); showToast('🪙 +1 монета');
-                    const packet={type:'coin_taken',key:ckey}; if(isRoomHost)broadcast(packet);else sendToConnection(hostConnection,packet);
-                    addChatMessage('Система',`${localPlayer.name} получил монетку`,'system');
-                }
-            }
-            if(isBeggarRoom(localPlayer.rx,localPlayer.ry)&&beggarDone.has(roomKey())){
-                const bp={x:400,y:300};
-                if(Math.hypot(localPlayer.x-bp.x,localPlayer.y-bp.y)<55&&!takenItems.has(`beggar_speed:${roomKey()}`)){
-                    const gift=getBeggarGift(localPlayer.rx,localPlayer.ry); if(gift.type==='item'){takenItems.add(`beggar_speed:${roomKey()}`);applyItem(gift);renderItemHud();}
                 }
             }
         }
@@ -1160,8 +1105,6 @@
         }
 
         document.getElementById('btnBomb')?.addEventListener('click', () => { audio.init(); placeBomb(); });
-        document.getElementById('btnActive')?.addEventListener('click', () => { audio.init(); useD6(); });
-        document.getElementById('mobileActive')?.addEventListener('click', () => { audio.init(); useD6(); });
 
         // PeerJS запускаем только после инициализации localPlayer и HUD.
         autoJoinRoom().catch(err => {
@@ -1202,7 +1145,7 @@
             ctx.strokeStyle='rgba(255,220,80,.45)'; ctx.lineWidth=5; ctx.strokeRect(55,55,ROOM_WIDTH-110,ROOM_HEIGHT-110);
             ctx.strokeStyle='rgba(0,0,0,.28)'; ctx.lineWidth=2; ctx.strokeRect(70,70,ROOM_WIDTH-140,ROOM_HEIGHT-140);
             items.forEach(item=>{
-                if(itemTaken(roomKey(),item.itemId)){ ctx.save(); ctx.fillStyle='#21170a';ctx.strokeStyle='#050403';ctx.lineWidth=5;ctx.fillRect(item.x-30,item.y+12,60,14);ctx.strokeRect(item.x-30,item.y+12,60,14);ctx.fillStyle='#8c6a25';ctx.fillRect(item.x-5,item.y-20,10,34);ctx.restore(); return; }
+                if(itemTaken(roomKey(),item.itemId)) return;
                 ctx.save();
                 const glow=ctx.createRadialGradient(item.x,item.y,2,item.x,item.y,55); glow.addColorStop(0,'rgba(255,220,80,.3)'); glow.addColorStop(1,'rgba(255,220,80,0)');
                 ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(item.x,item.y,55,0,Math.PI*2); ctx.fill();
@@ -1236,103 +1179,6 @@
             ctx.restore();
         }
 
-        function getFollowerPos(x,y,dx,dy){
-            const len=Math.hypot(dx,dy)||1; const px=-dy/len, py=dx/len;
-            return {x:x+px*34,y:y+py*34-4};
-        }
-        function drawIncubus(x,y){
-            const f=getFollowerPos(x,y,mobileShoot.x||0, mobileShoot.y||-1);
-            ctx.save(); ctx.fillStyle='rgba(168,85,247,.22)';ctx.beginPath();ctx.arc(f.x,f.y,25,0,Math.PI*2);ctx.fill();
-            ctx.fillStyle='#7e22ce';ctx.strokeStyle='#111';ctx.lineWidth=3;ctx.beginPath();ctx.arc(f.x,f.y,11,0,Math.PI*2);ctx.fill();ctx.stroke();
-            ctx.fillStyle='#f5d0fe';ctx.beginPath();ctx.arc(f.x-4,f.y-2,2.5,0,Math.PI*2);ctx.arc(f.x+4,f.y-2,2.5,0,Math.PI*2);ctx.fill();
-            ctx.restore();
-        }
-        function drawRoomCoin(pos){
-            ctx.save();ctx.fillStyle='#facc15';ctx.strokeStyle='#111';ctx.lineWidth=3;ctx.beginPath();ctx.arc(pos.x,pos.y,13,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle='#78350f';ctx.font='bold 14px monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('$',pos.x,pos.y+1);ctx.restore();
-        }
-        function drawShopRoom(){
-            ctx.save();ctx.fillStyle='rgba(180,130,30,.10)';ctx.fillRect(60,60,680,380);
-            ctx.fillStyle='#5b3a10';ctx.fillRect(330,330,140,95);ctx.strokeStyle='#111';ctx.lineWidth=5;ctx.strokeRect(330,330,140,95);
-            ctx.fillStyle='#facc15';ctx.font='bold 18px monospace';ctx.textAlign='center';ctx.fillText('SHOP',400,360);
-            ctx.fillStyle='#94a3b8';ctx.fillRect(360,390,80,8);
-            getShopItems(localPlayer.rx,localPlayer.ry).forEach(it=>{
-                if(shopPurchases.has(`${roomKey()}:${it.itemId}`)){ctx.fillStyle='#2b2414';ctx.fillRect(it.x-28,it.y+14,56,10);return;}
-                ctx.fillStyle='#2b2414';ctx.fillRect(it.x-28,it.y+14,56,10);ctx.strokeStyle='#111';ctx.lineWidth=4;ctx.strokeRect(it.x-28,it.y+14,56,10);
-                ctx.font='32px sans-serif';ctx.textAlign='center';ctx.fillText(it.icon,it.x,it.y+5);ctx.font='bold 12px monospace';ctx.fillStyle='#facc15';ctx.fillText(`${it.price} 🪙`,it.x,it.y+42);
-            });
-            const near=getShopItems(localPlayer.rx,localPlayer.ry).some(it=>!shopPurchases.has(`${roomKey()}:${it.itemId}`)&&Math.hypot(localPlayer.x-it.x,localPlayer.y-it.y)<75);
-            if(near) drawInteractHint('F / КУПИТЬ');
-            ctx.restore();
-        }
-        function drawBeggarRoom(){
-            ctx.save();
-            const done=beggarDone.has(roomKey());
-            if(!done){
-                ctx.fillStyle='#78350f';ctx.strokeStyle='#111';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(400,300,38,45,0,0,Math.PI*2);ctx.fill();ctx.stroke();
-                ctx.fillStyle='#fde68a';ctx.beginPath();ctx.arc(400,270,22,0,Math.PI*2);ctx.fill();ctx.stroke();
-                ctx.fillStyle='#111';ctx.beginPath();ctx.arc(393,268,3,0,Math.PI*2);ctx.arc(407,268,3,0,Math.PI*2);ctx.fill();
-                ctx.fillStyle='#facc15';ctx.font='bold 14px monospace';ctx.textAlign='center';ctx.fillText('1 🪙',400,360);
-                if(Math.hypot(localPlayer.x-400,localPlayer.y-300)<95) drawInteractHint('F / ДАТЬ МОНЕТУ');
-            }else{
-                ctx.fillStyle='#21170a';ctx.strokeStyle='#050403';ctx.lineWidth=5;ctx.fillRect(350,312,100,16);ctx.strokeRect(350,312,100,16);
-                ctx.fillStyle='#8c6a25';ctx.fillRect(395,278,10,40);ctx.font='34px sans-serif';ctx.textAlign='center';ctx.fillText('👟',400,275);
-                ctx.fillStyle='#86efac';ctx.font='bold 11px monospace';ctx.fillText('SPEED',400,345);
-            }
-            ctx.restore();
-        }
-        function drawInteractHint(text){ctx.save();ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(315,440,170,32);ctx.fillStyle='#facc15';ctx.font='bold 12px monospace';ctx.textAlign='center';ctx.fillText(text,400,460);ctx.restore();}
-
-        function isShopRoom(rx,ry){
-            if((rx===0&&ry===0)||isGoldenRoom(rx,ry)||isKeeperRoom(rx,ry)||isBeggarRoom(rx,ry)) return false;
-            return coordHash(rx+51,ry-13)>0.955;
-        }
-        function isBeggarRoom(rx,ry){
-            if((rx===0&&ry===0)||isGoldenRoom(rx,ry)||isKeeperRoom(rx,ry)||isShopRoom(rx,ry)) return false;
-            return coordHash(rx-27,ry+71)>0.965;
-        }
-        function hasRoomCoin(rx,ry){
-            if((rx===0&&ry===0)||isGoldenRoom(rx,ry)||isShopRoom(rx,ry)||isBeggarRoom(rx,ry)) return false;
-            return coordHash(rx+91,ry-37)>0.55;
-        }
-        function roomCoinPos(rx,ry){
-            const h=coordHash(rx+7,ry-11);
-            const corners=[{x:120,y:100},{x:680,y:100},{x:120,y:400},{x:680,y:400},{x:400,y:250}];
-            return corners[Math.floor(h*corners.length)];
-        }
-        function specialKey(prefix){ return `${prefix}:${localPlayer.rx},${localPlayer.ry}`; }
-        function getShopItems(rx,ry){
-            const h=Math.floor(coordHash(rx+33,ry+18)*100000);
-            const pool=[...ITEM_POOL];
-            return [0,1].map(i=>{ const it=pool[(h+i*5)%pool.length]; return {...it,itemId:`shop${i}`,x:i===0?300:500,y:250,price:i===0?2:3}; });
-        }
-        function getBeggarGift(rx,ry){
-            const h=coordHash(rx+13,ry+44);
-            if(h<0.35) return {type:'pickup',...PICKUP_POOL[Math.floor(h*PICKUP_POOL.length)]};
-            return {type:'item',...ITEM_POOL.find(x=>x.id==='speed_up') || ITEM_POOL[1]};
-        }
-        function interactNearby(){
-            const key=roomKey();
-            if(isShopRoom(localPlayer.rx,localPlayer.ry)){
-                const item=getShopItems(localPlayer.rx,localPlayer.ry).find(it=>!shopPurchases.has(`${key}:${it.itemId}`)&&Math.hypot(localPlayer.x-it.x,localPlayer.y-it.y)<75);
-                if(item){
-                    if(inventory.coins<item.price){showToast(`Нужно монет: ${item.price}`);return;}
-                    inventory.coins-=item.price; shopPurchases.add(`${key}:${item.itemId}`); applyItem(item); renderItemHud();
-                    const packet={type:'shop_bought',key:`${key}:${item.itemId}`}; if(isRoomHost)broadcast(packet);else sendToConnection(hostConnection,packet);
-                    addChatMessage('Система',`${localPlayer.name} купил ${item.name}`,'system'); return;
-                }
-            }
-            if(isBeggarRoom(localPlayer.rx,localPlayer.ry)&&!beggarDone.has(key)&&Math.hypot(localPlayer.x-400,localPlayer.y-300)<95){
-                if(inventory.coins<1){showToast('Попрошайке нужна 1 монета');return;}
-                inventory.coins--; beggarDone.add(key); const gift=getBeggarGift(localPlayer.rx,localPlayer.ry); applyItem(gift); renderItemHud();
-                const packet={type:'beggar_done',key}; if(isRoomHost)broadcast(packet);else sendToConnection(hostConnection,packet);
-                addChatMessage('Система',`${localPlayer.name} дал монету попрошайке и получил ${gift.name}`,'system'); return;
-            }
-        }
-
-        function getGoldenItemsOverridden(rx,ry){
-            const key=`${rx},${ry}`; return goldenRoomOverrides.get(key)||getGoldenItems(rx,ry);
-        }
-
         function getRoomObstacles(rx, ry) {
             if (isGoldenRoom(rx, ry) || isKeeperRoom(rx, ry)) return [];
             if (rx === 0 && ry === 0) return TEMPLATES[0];
@@ -1341,13 +1187,13 @@
             return TEMPLATES[templateIdx];
         }
 
-        function makeProjectile(dirX, dirY, charInfo, isGreed=false, ox=null, oy=null) {
+        function makeProjectile(dirX, dirY, charInfo, isGreed=false) {
             const id = myPlayerId + '_' + Math.random().toString(36).slice(2,9);
             const attackType = isGreed ? 'fire' : charInfo.attackType;
             const p = {
                 id, ownerId:myPlayerId, ownerName:localPlayer.name,
                 rx:localPlayer.rx, ry:localPlayer.ry,
-                x:ox===null?localPlayer.x:ox, y:oy===null?localPlayer.y-8:oy,
+                x:localPlayer.x, y:localPlayer.y-8,
                 vx:dirX * (isGreed ? 650 : 450) * localPlayer.stats.shotSpeed,
                 vy:dirY * (isGreed ? 650 : 450) * localPlayer.stats.shotSpeed,
                 color:isGreed ? '#facc15' : charInfo.tearColor,
@@ -1391,6 +1237,20 @@
             }
         }
 
+        function lilithFollowerPos(){
+            const dx=(keys.arrowRight?1:keys.arrowLeft?-1:0), dy=(keys.arrowDown?1:keys.arrowUp?-1:0);
+            const fx=dx||mobileShoot.x, fy=dy||mobileShoot.y;
+            const len=Math.hypot(fx,fy)||1;
+            return {x:localPlayer.x-fx/len*38, y:localPlayer.y-fy/len*38-4};
+        }
+        function drawLilithFollower(){
+            if(localPlayer.character!=='lilith') return;
+            const p=lilithFollowerPos();
+            ctx.save(); ctx.fillStyle='rgba(168,85,247,.22)'; ctx.beginPath(); ctx.arc(p.x,p.y,25,0,Math.PI*2);ctx.fill();
+            ctx.fillStyle='#7e22ce';ctx.strokeStyle='#111';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x,p.y,12,0,Math.PI*2);ctx.fill();ctx.stroke();
+            ctx.fillStyle='#f5d0fe';ctx.beginPath();ctx.arc(p.x-4,p.y-2,2.5,0,Math.PI*2);ctx.arc(p.x+4,p.y-2,2.5,0,Math.PI*2);ctx.fill(); ctx.restore();
+        }
+
         function shootProjectile(dirX, dirY) {
             const now = performance.now();
             const fireDelay = Math.max(150, (activeCheats.has('MADNESS') ? 240 : 400) / Math.max(1, localPlayer.stats.tears));
@@ -1399,12 +1259,11 @@
             const charInfo = CHARACTERS[localPlayer.character] || CHARACTERS.isaac;
             audio.playShoot(charInfo.attackType);
             const isGreed = activeCheats.has('GREED');
-            let ox=localPlayer.x, oy=localPlayer.y-8;
-            if(localPlayer.character==='lilith'){ const f=getFollowerPos(localPlayer.x,localPlayer.y,dirX,dirY); ox=f.x; oy=f.y; }
+            const origin = localPlayer.character==='lilith' ? lilithFollowerPos() : {x:localPlayer.x,y:localPlayer.y-8};
             if (activeCheats.has('MADNESS')) {
                 const dirs=[{x:dirX,y:dirY},{x:-dirX,y:-dirY},{x:dirY,y:dirX},{x:-dirY,y:-dirX}];
-                dirs.forEach(d=>makeProjectile(d.x,d.y,charInfo,isGreed,ox,oy));
-            } else makeProjectile(dirX,dirY,charInfo,isGreed,ox,oy);
+                dirs.forEach(d=>{ const p=makeProjectile(d.x,d.y,charInfo,isGreed); p.x=origin.x; p.y=origin.y; });
+            } else { const p=makeProjectile(dirX,dirY,charInfo,isGreed); p.x=origin.x; p.y=origin.y; }
         }
 
         function gameLoop(now) {
@@ -1550,9 +1409,13 @@
             projectiles = [];
             activeBombs = [];
             const coordKey = `${localPlayer.rx},${localPlayer.ry}`;
+            const wasNew = !visitedRooms.has(coordKey);
             visitedRooms.add(coordKey);
+            if(wasNew && localPlayer.character==='isaac'){ d6Charges=Math.min(6,d6Charges+1); renderActiveButton(); }
             document.getElementById('uiCoord').innerText = `(${localPlayer.rx}, ${localPlayer.ry})`;
-            document.getElementById('uiPlayerCount').innerText = String(Object.keys(remotePlayers).length + 1);
+            const sameRoomCount = Object.values(remotePlayers)
+                .filter(p => p.rx === localPlayer.rx && p.ry === localPlayer.ry).length;
+            document.getElementById('uiPlayerCount').innerText = String(sameRoomCount + 1);
             
             const currentTheme = getRoomTheme(localPlayer.rx, localPlayer.ry);
             document.getElementById('uiRoomThemeTitle').innerText = isGoldenRoom(localPlayer.rx, localPlayer.ry) ? '💛 Золотая комната' : (isKeeperRoom(localPlayer.rx, localPlayer.ry) ? '🎯 Комната Дамми' : currentTheme.label);
@@ -1612,19 +1475,11 @@
                 drawWallSegment(ROOM_WIDTH-WALL_THICKNESS,0,WALL_THICKNESS,ROOM_HEIGHT/2-DOOR_SIZE/2);
                 drawWallSegment(ROOM_WIDTH-WALL_THICKNESS,ROOM_HEIGHT/2+DOOR_SIZE/2,WALL_THICKNESS,ROOM_HEIGHT/2-DOOR_SIZE/2);
             } else drawWallSegment(ROOM_WIDTH-WALL_THICKNESS,0,WALL_THICKNESS,ROOM_HEIGHT);
-            const drawDoorFrame=(side, color, icon)=>{
-                ctx.save();ctx.strokeStyle=color;ctx.lineWidth=7;ctx.fillStyle='#090707';
-                let x,y,w,h;
-                if(side==='up'){x=ROOM_WIDTH/2-DOOR_SIZE/2;y=2;w=DOOR_SIZE;h=WALL_THICKNESS-4;}
-                if(side==='down'){x=ROOM_WIDTH/2-DOOR_SIZE/2;y=ROOM_HEIGHT-WALL_THICKNESS+2;w=DOOR_SIZE;h=WALL_THICKNESS-4;}
-                if(side==='left'){x=2;y=ROOM_HEIGHT/2-DOOR_SIZE/2;w=WALL_THICKNESS-4;h=DOOR_SIZE;}
-                if(side==='right'){x=ROOM_WIDTH-WALL_THICKNESS+2;y=ROOM_HEIGHT/2-DOOR_SIZE/2;w=WALL_THICKNESS-4;h=DOOR_SIZE;}
-                ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);ctx.font='22px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(icon,x+w/2,y+h/2);ctx.restore();
-            };
-            if (doors.up){const t=getRoomTheme(localPlayer.rx,localPlayer.ry+1);drawDoorFrame('up',isGoldenRoom(localPlayer.rx,localPlayer.ry+1)?'#facc15':isShopRoom(localPlayer.rx,localPlayer.ry+1)?'#a16207':t.border,isGoldenRoom(localPlayer.rx,localPlayer.ry+1)?'👑':isShopRoom(localPlayer.rx,localPlayer.ry+1)?'🪙':'◆');}
-            if (doors.down){const t=getRoomTheme(localPlayer.rx,localPlayer.ry-1);drawDoorFrame('down',isGoldenRoom(localPlayer.rx,localPlayer.ry-1)?'#facc15':isShopRoom(localPlayer.rx,localPlayer.ry-1)?'#a16207':t.border,isGoldenRoom(localPlayer.rx,localPlayer.ry-1)?'👑':isShopRoom(localPlayer.rx,localPlayer.ry-1)?'🪙':'◆');}
-            if (doors.left){const t=getRoomTheme(localPlayer.rx-1,localPlayer.ry);drawDoorFrame('left',isGoldenRoom(localPlayer.rx-1,localPlayer.ry)?'#facc15':isShopRoom(localPlayer.rx-1,localPlayer.ry)?'#a16207':t.border,isGoldenRoom(localPlayer.rx-1,localPlayer.ry)?'👑':isShopRoom(localPlayer.rx-1,localPlayer.ry)?'🪙':'◆');}
-            if (doors.right){const t=getRoomTheme(localPlayer.rx+1,localPlayer.ry);drawDoorFrame('right',isGoldenRoom(localPlayer.rx+1,localPlayer.ry)?'#facc15':isShopRoom(localPlayer.rx+1,localPlayer.ry)?'#a16207':t.border,isGoldenRoom(localPlayer.rx+1,localPlayer.ry)?'👑':isShopRoom(localPlayer.rx+1,localPlayer.ry)?'🪙':'◆');}
+            ctx.fillStyle='#090707';
+            if (doors.up) ctx.fillRect(ROOM_WIDTH/2-DOOR_SIZE/2,0,DOOR_SIZE,WALL_THICKNESS);
+            if (doors.down) ctx.fillRect(ROOM_WIDTH/2-DOOR_SIZE/2,ROOM_HEIGHT-WALL_THICKNESS,DOOR_SIZE,WALL_THICKNESS);
+            if (doors.left) ctx.fillRect(0,ROOM_HEIGHT/2-DOOR_SIZE/2,WALL_THICKNESS,DOOR_SIZE);
+            if (doors.right) ctx.fillRect(ROOM_WIDTH-WALL_THICKNESS,ROOM_HEIGHT/2-DOOR_SIZE/2,WALL_THICKNESS,DOOR_SIZE);
 
             if (isGoldenRoom(localPlayer.rx, localPlayer.ry)) {
                 drawGoldenRoom(goldenRoomItems());
@@ -1682,9 +1537,6 @@
             });
 
             if (isKeeperRoom(localPlayer.rx, localPlayer.ry)) drawKeeperRoom();
-            if (isShopRoom(localPlayer.rx,localPlayer.ry)) drawShopRoom();
-            if (isBeggarRoom(localPlayer.rx,localPlayer.ry)) drawBeggarRoom();
-            if (hasRoomCoin(localPlayer.rx,localPlayer.ry) && !roomCoins.has(`coin:${localPlayer.rx},${localPlayer.ry}`)) drawRoomCoin(roomCoinPos(localPlayer.rx,localPlayer.ry));
 
             activeBombs.forEach(b => {
                 if (b.rx !== localPlayer.rx || b.ry !== localPlayer.ry) return;
@@ -1722,7 +1574,7 @@
                 }
             });
 
-            if(localPlayer.character==='lilith') drawIncubus(localPlayer.x,localPlayer.y);
+            drawLilithFollower();
             drawFlashCharacter(localPlayer.x, localPlayer.y, localPlayer.character, localPlayer.name, localPlayer.walkTimer, localPlayer.isMoving);
 
             ctx.restore();

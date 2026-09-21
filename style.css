@@ -209,8 +209,6 @@
     .bomb-btn { padding: 8px 10px; font-size: 10px; }
     .bomb-btn span { display:none; }
 }
-.active-btn,.mobile-active-btn{background:linear-gradient(135deg,#6b21a8,#a855f7);color:#fff;border:2px solid #facc15;padding:.45rem .7rem;border-radius:.55rem;font-weight:800;box-shadow:0 4px 0 #111;font-size:11px}
-.active-btn span,.mobile-active-btn span{font-family:monospace;color:#fde68a}
-.mobile-active-btn{position:absolute;right:1rem;bottom:8rem;z-index:25;min-width:88px}
-@media(min-width:640px){.mobile-active-btn{display:none!important}}
-@media(max-width:639px){#mobileDpad,#mobileShooter{bottom:80px!important}.active-btn{display:none!important}}
+
+/* Stable active item controls */
+.active-btn{background:#111827;border:2px solid #d4a72c;color:#facc15;padding:6px 10px;border-radius:8px;font-weight:800;font-size:11px;box-shadow:0 4px 12px #0008}.active-btn span{font-family:monospace}.mobile-active-btn{position:absolute;right:155px;bottom:82px;z-index:25;background:#111827;border:2px solid #d4a72c;color:#facc15;padding:9px 10px;border-radius:9px;font-weight:800;font-size:11px;box-shadow:0 4px 12px #0008}@media(max-width:640px){.mobile-active-btn{right:145px;bottom:82px}}
