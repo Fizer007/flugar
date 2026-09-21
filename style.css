@@ -1,69 +1,125 @@
+* {
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+}
+
 body {
-    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background-color: #0b0808;
+    color: #e2e8f0;
+    height: 100vh;
+    height: 100dvh;
     overflow: hidden;
-    background: #1a1a1a;
-    font-family: 'Courier New', Courier, monospace;
-    color: #e0e0e0;
-    touch-action: none;
 }
 
-#ui {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 10;
-    pointer-events: auto;
+.font-flash { font-family: 'Press Start 2P', monospace; }
+.font-dirt { font-family: 'Rubik Dirt', cursive; }
+
+/* Flash / Madness Combat visual card frame style */
+.flash-card {
+    background: linear-gradient(180deg, #1d1a19 0%, #120e0d 100%);
+    border: 4px solid #000000;
+    box-shadow: inset 0 0 0 2px #3f3937, 0 12px 30px rgba(0, 0, 0, 0.9);
+    border-radius: 8px;
 }
 
-#menu {
-    background: rgba(0, 0, 0, 0.8);
-    padding: 20px;
-    border: 2px solid #444;
+.flash-btn {
+    background: linear-gradient(180deg, #3a322e 0%, #221d1a 100%);
+    border: 3px solid #000000;
+    box-shadow: inset 0 1px 0 #5c524c;
+    color: #e2dcd5;
+    transition: all 0.1s ease;
 }
 
-.hidden { display: none; }
-
-#gameCanvas {
-    display: block;
-    image-rendering: pixelated;
+.flash-btn:hover {
+    background: linear-gradient(180deg, #524741 0%, #2e2622 100%);
+    border-color: #000000;
+    color: #facc15;
+    transform: translateY(-1px);
 }
 
-/* Джойстик для мобилок */
-#controls {
-    position: absolute;
-    bottom: 30px;
-    width: 100%;
+.flash-btn:active {
+    transform: translateY(2px);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.8);
+}
+
+.flash-btn-red {
+    background: linear-gradient(180deg, #881337 0%, #4c0519 100%);
+    border-color: #000000;
+    box-shadow: inset 0 1px 0 #be123c;
+}
+
+.flash-btn-red:hover {
+    background: linear-gradient(180deg, #9f1239 0%, #610726 100%);
+    color: #ffffff;
+}
+
+.char-card {
+    background: #181413;
+    border: 2px solid #382e2b;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.char-card:hover {
+    border-color: #facc15;
+    background: #26201e;
+}
+
+.char-card.selected {
+    border-color: #facc15;
+    background: #2a221a;
+    box-shadow: 0 0 14px rgba(250, 204, 21, 0.4);
+}
+
+/* Mobile Controls */
+.dpad-btn {
+    background: rgba(30, 25, 23, 0.85);
+    border: 3px solid #000000;
+    box-shadow: inset 0 0 0 1px #443c38;
+    border-radius: 12px;
     display: flex;
-    justify-content: space-around;
     align-items: center;
-    pointer-events: none;
+    justify-content: center;
+    font-size: 1.25rem;
+    color: #d1d5db;
 }
 
-#joystick-base {
-    width: 100px;
-    height: 100px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    position: relative;
-    pointer-events: auto;
+.dpad-btn:active {
+    background: #facc15;
+    color: #000;
 }
 
-#joystick-stick {
-    width: 50px;
-    height: 50px;
-    background: #ff4444;
-    border-radius: 50%;
-    position: absolute;
-    top: 25px;
-    left: 25px;
+.shoot-btn {
+    background: rgba(120, 20, 20, 0.85);
+    border: 3px solid #000000;
+    box-shadow: inset 0 0 0 1px #9f1239;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    color: #fecdd3;
 }
 
-#action-btn {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    background: #44ff44;
-    border: none;
-    font-weight: bold;
-    pointer-events: auto;
+.shoot-btn:active {
+    background: #ef4444;
+    color: #fff;
 }
+
+/* Custom Scrollbar */
+.custom-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.3);
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+    background: #443c38;
+    border-radius: 4px;
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
