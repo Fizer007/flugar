@@ -210,6 +210,7 @@
             } else if (packet.type === 'item_taken') {
                 if (packet.roomKey && packet.itemId) {
                     takenItems.add(`${packet.roomKey}:${packet.itemId}`);
+                    if (packet.itemName && packet.senderId !== myPlayerId) addChatMessage(packet.senderName || 'Player', `получил ${packet.itemIcon || '📦'} ${packet.itemName}`, 'system');
                     renderItemHud();
                     if (isRoomHost) broadcast(packet, senderId);
                 }
@@ -219,6 +220,10 @@
                 renderItemHud();
             } else if (packet.type === 'beggar_trade') {
                 if (packet.roomKey) beggarTrades.add(packet.roomKey);
+                if (isRoomHost) broadcast(packet, senderId);
+                renderItemHud();
+            } else if (packet.type === 'shop_buy') {
+                if (packet.roomKey && Number.isInteger(packet.index)) shopPurchases.add(`${packet.roomKey}:${packet.index}`);
                 if (isRoomHost) broadcast(packet, senderId);
                 renderItemHud();
             } else if (packet.type === 'item_state') {
@@ -438,14 +443,14 @@
         const DOOR_SIZE = 100;
 
         const ROOM_THEMES = {
-            basement: { name: 'Basement', floor: '#221b19', grid: '#181211', wall: '#3a302c', border: '#171210', obstacleRock: '#524640', label: '🏚️ Подвал' },
-            cellar: { name: 'Cellar', floor: '#1a2228', grid: '#12181d', wall: '#2a3842', border: '#0d1318', obstacleRock: '#435866', label: '🪨 Погреб' },
-            burningBasement: { name: 'Burning Basement', floor: '#2d140e', grid: '#1e0c08', wall: '#4a1f16', border: '#1a0805', obstacleRock: '#733123', label: '🔥 Горящий Подвал' },
-            cathedral: { name: 'Cathedral', floor: '#2a333d', grid: '#1f2730', wall: '#4b5b6d', border: '#e2e8f0', obstacleRock: '#94a3b8', label: '🏛️ Собор' },
-            sheol: { name: 'Sheol', floor: '#140c10', grid: '#0a0508', wall: '#2e121e', border: '#991b1b', obstacleRock: '#581c27', label: '🌋 Преисподняя (Sheol)' },
-            greed: { name: 'Greed Room', floor: '#282310', grid: '#1a170a', wall: '#4a3f18', border: '#facc15', obstacleRock: '#857022', label: '💰 Сокровищница (Greed)' },
-            chest: { name: 'The Chest', floor: '#302612', grid: '#1d170b', wall: '#54421d', border: '#fbbf24', obstacleRock: '#927230', label: '📦 Сундук (Chest)' },
-            devil: { name: 'Devil Room', floor: '#1a0505', grid: '#100202', wall: '#3d0a0a', border: '#dc2626', obstacleRock: '#6b1111', label: '😈 Комната Дьявола' }
+            basement: { name: 'Basement', floor: '#221b19', grid: '#181211', wall: '#3a302c', border: '#171210', obstacleRock: '#524640', label: '🏚️ Подвал', door:'#8b5e3c' },
+            cellar: { name: 'Cellar', floor: '#1a2228', grid: '#12181d', wall: '#2a3842', border: '#0d1318', obstacleRock: '#435866', label: '🪨 Погреб', door:'#6b7280' },
+            burningBasement: { name: 'Burning Basement', floor: '#2d140e', grid: '#1e0c08', wall: '#4a1f16', border: '#1a0805', obstacleRock: '#733123', label: '🔥 Горящий Подвал', door:'#b45309' },
+            cathedral: { name: 'Cathedral', floor: '#2a333d', grid: '#1f2730', wall: '#4b5b6d', border: '#e2e8f0', obstacleRock: '#94a3b8', label: '🏛️ Собор', door:'#dbeafe' },
+            sheol: { name: 'Sheol', floor: '#140c10', grid: '#0a0508', wall: '#2e121e', border: '#991b1b', obstacleRock: '#581c27', label: '🌋 Преисподняя (Sheol)', door:'#ef4444' },
+            greed: { name: 'Greed Room', floor: '#282310', grid: '#1a170a', wall: '#4a3f18', border: '#facc15', obstacleRock: '#857022', label: '💰 Сокровищница (Greed)', door:'#facc15' },
+            chest: { name: 'The Chest', floor: '#302612', grid: '#1d170b', wall: '#54421d', border: '#fbbf24', obstacleRock: '#927230', label: '📦 Сундук (Chest)', door:'#f59e0b' },
+            devil: { name: 'Devil Room', floor: '#1a0505', grid: '#100202', wall: '#3d0a0a', border: '#dc2626', obstacleRock: '#6b1111', label: '😈 Комната Дьявола', door:'#dc2626' }
         };
 
         // Infinite deterministic room graph: a guaranteed branching tree + occasional side links.
@@ -469,15 +474,26 @@
             for (const ch of first + '|' + second) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
             return (h >>> 0) / 4294967296;
         }
-        function hasRoomDoor(rx, ry, dir) {
+        function edgeExists(rx, ry, dir) {
             const nx = rx + dir.x, ny = ry + dir.y;
             const np = roomParent(nx, ny);
             if (np && np.rx === rx && np.ry === ry) return true;
             const p = roomParent(rx, ry);
             if (p && p.rx === nx && p.ry === ny) return true;
-            // Extra side links create real forks/loops without a finite map.
-            if (edgeHash(rx, ry, nx, ny) < 0.14) return true;
-            return false;
+            return edgeHash(rx, ry, nx, ny) < 0.14;
+        }
+
+        function ensureRoomNeighbors(rx, ry) {
+            generatedRooms.add(`${rx},${ry}`);
+            Object.values(ROOM_DIRS).forEach(dir => {
+                if (edgeExists(rx, ry, dir)) generatedRooms.add(`${rx + dir.x},${ry + dir.y}`);
+            });
+        }
+
+        function hasRoomDoor(rx, ry, dir) {
+            const nx = rx + dir.x, ny = ry + dir.y;
+            // Дверь существует только если по ту сторону действительно сгенерирована соседняя комната.
+            return generatedRooms.has(`${rx},${ry}`) && generatedRooms.has(`${nx},${ny}`) && edgeExists(rx, ry, dir);
         }
         const ROOM_DIRS = {
             up:{x:0,y:1}, down:{x:0,y:-1}, left:{x:-1,y:0}, right:{x:1,y:0}
@@ -559,6 +575,7 @@
         let projectiles = [];
         let remotePlayers = {};
         let visitedRooms = new Set(["0,0"]);
+        let generatedRooms = new Set(["0,0"]);
         let d6Charges = 6;
         const goldenRoomOverrides = new Map();
         let chatLogs = [];
@@ -689,6 +706,7 @@
             d6Charges = 6;
             goldenRoomOverrides.clear();
             beggarTrades.clear();
+            shopPurchases.clear();
             renderActiveButton();
             renderItemHud();
             renderChatMessages();
@@ -807,6 +825,8 @@
             localPlayer.x = ROOM_WIDTH / 2;
             localPlayer.y = ROOM_HEIGHT / 2;
             visitedRooms = new Set(["0,0"]);
+            generatedRooms = new Set(["0,0"]);
+            ensureRoomNeighbors(0, 0);
             projectiles = [];
             activeBombs = [];
             renderItemHud();
@@ -976,11 +996,19 @@
         }
 
         function isBeggarRoom(rx, ry) {
-            if (isGoldenRoom(rx, ry) || isKeeperRoom(rx, ry) || (rx === 0 && ry === 0)) return false;
+            if (isGoldenRoom(rx, ry) || isKeeperRoom(rx, ry) || isShopRoom(rx,ry) || (rx === 0 && ry === 0)) return false;
             return coordHash(rx - 14, ry + 23) > 0.925;
         }
 
+        function isShopRoom(rx, ry) {
+            if (isGoldenRoom(rx,ry) || isKeeperRoom(rx,ry) || (rx === 0 && ry === 0)) return false;
+            return coordHash(rx + 51, ry - 37) > 0.93;
+        }
+
+        function isDamageDummyRoom(rx,ry){ return isKeeperRoom(rx,ry) || isShopRoom(rx,ry); }
+
         const beggarTrades = new Set();
+        const shopPurchases = new Set();
 
         function getGoldenItems(rx, ry) {
             const h = Math.floor(coordHash(rx, ry) * 1000000);
@@ -1081,7 +1109,11 @@
                 if (d < 42) {
                     takenItems.add(`${key}:${item.itemId}`);
                     applyItem(item);
-                    const packet = {type:'item_taken', roomKey:key, itemId:item.itemId};
+                    // Лёгкое отталкивание после подбора предмета.
+                    const ang = Math.atan2(localPlayer.y-item.y, localPlayer.x-item.x) || 0;
+                    localPlayer.x += Math.cos(ang) * 16; localPlayer.y += Math.sin(ang) * 16;
+                    addChatMessage(localPlayer.name, `получил ${item.icon} ${item.name}`,'user');
+                    const packet = {type:'item_taken', roomKey:key, itemId:item.itemId, itemName:item.name, itemIcon:item.icon, senderId:myPlayerId, senderName:localPlayer.name};
                     if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection, packet);
                     renderItemHud();
                     break;
@@ -1137,6 +1169,7 @@
         document.getElementById('btnBomb')?.addEventListener('click', () => { audio.init(); placeBomb(); });
         document.getElementById('btnActive')?.addEventListener('click', () => { audio.init(); useD6(); });
         document.getElementById('mobileActive')?.addEventListener('pointerdown', e => { e.preventDefault(); audio.init(); useD6(); }, {passive:false});
+        document.getElementById('mobileInteract')?.addEventListener('pointerdown', e => { e.preventDefault(); audio.init(); interactNearby(); }, {passive:false});
 
         // PeerJS запускаем только после инициализации localPlayer и HUD.
         autoJoinRoom().catch(err => {
@@ -1154,7 +1187,7 @@
         }
 
         function registerDummyHit(damage,x,y,ownerName='Player') {
-            if (!isKeeperRoom(localPlayer.rx,localPlayer.ry)) return;
+            if (!isDamageDummyRoom(localPlayer.rx,localPlayer.ry)) return;
             const n=Math.max(0,Number(damage)||0);
             dummyDamageTotal += n;
             dummyDamageEvents.push({t:performance.now(),damage:n});
@@ -1175,22 +1208,25 @@
             ctx.strokeStyle='rgba(255,235,150,.16)'; ctx.lineWidth=2;
             for(let x=40;x<ROOM_WIDTH-40;x+=50) for(let y=40;y<ROOM_HEIGHT-40;y+=50) ctx.strokeRect(x,y,50,50);
             ctx.strokeStyle='rgba(255,220,80,.45)'; ctx.lineWidth=5; ctx.strokeRect(55,55,ROOM_WIDTH-110,ROOM_HEIGHT-110);
-            ctx.strokeStyle='rgba(0,0,0,.28)'; ctx.lineWidth=2; ctx.strokeRect(70,70,ROOM_WIDTH-140,ROOM_HEIGHT-140);
             items.forEach(item=>{
-                if(itemTaken(roomKey(),item.itemId)) return;
                 ctx.save();
-                const glow=ctx.createRadialGradient(item.x,item.y,2,item.x,item.y,55); glow.addColorStop(0,'rgba(255,220,80,.3)'); glow.addColorStop(1,'rgba(255,220,80,0)');
-                ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(item.x,item.y,55,0,Math.PI*2); ctx.fill();
-                if(item.type==='item'){
-                    ctx.fillStyle='#21170a'; ctx.strokeStyle='#050403'; ctx.lineWidth=5; ctx.fillRect(item.x-30,item.y+12,60,14); ctx.strokeRect(item.x-30,item.y+12,60,14);
-                    ctx.fillStyle='#8c6a25'; ctx.fillRect(item.x-5,item.y-20,10,34);
-                    ctx.fillStyle=gold; ctx.strokeStyle='#fff1a8'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(item.x,item.y-22,18,0,Math.PI*2); ctx.fill(); ctx.stroke();
-                    ctx.font='27px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y-22);
-                    ctx.fillStyle=cream; ctx.font='bold 9px monospace'; ctx.fillText(item.name.toUpperCase(),item.x,item.y+35);
+                // Пьедестал остаётся даже после подбора предмета.
+                ctx.fillStyle='#21170a'; ctx.strokeStyle='#050403'; ctx.lineWidth=5;
+                ctx.fillRect(item.x-30,item.y+12,60,14); ctx.strokeRect(item.x-30,item.y+12,60,14);
+                ctx.fillStyle='#8c6a25'; ctx.fillRect(item.x-5,item.y-20,10,34);
+                if(!itemTaken(roomKey(),item.itemId)) {
+                    const glow=ctx.createRadialGradient(item.x,item.y,2,item.x,item.y,55); glow.addColorStop(0,'rgba(255,220,80,.3)'); glow.addColorStop(1,'rgba(255,220,80,0)');
+                    ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(item.x,item.y,55,0,Math.PI*2); ctx.fill();
+                    if(item.type==='item'){
+                        ctx.fillStyle=gold; ctx.strokeStyle='#fff1a8'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(item.x,item.y-22,18,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                        ctx.font='27px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y-22);
+                        ctx.fillStyle=cream; ctx.font='bold 9px monospace'; ctx.fillText(item.name.toUpperCase(),item.x,item.y+35);
+                    } else {
+                        ctx.font='30px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y);
+                        ctx.fillStyle=cream; ctx.font='bold 9px monospace'; ctx.fillText(item.name.toUpperCase(),item.x,item.y+30);
+                    }
                 } else {
-                    ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(item.x,item.y+18,20,8,0,0,Math.PI*2); ctx.fill();
-                    ctx.font='30px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y);
-                    ctx.fillStyle=cream; ctx.font='bold 9px monospace'; ctx.fillText(item.name.toUpperCase(),item.x,item.y+30);
+                    ctx.fillStyle='#6b4f20'; ctx.font='bold 9px monospace'; ctx.textAlign='center'; ctx.fillText('ПУСТО',item.x,item.y+35);
                 }
                 ctx.restore();
             });
@@ -1224,10 +1260,12 @@
                 const item = {itemId:'beggar_speed', type:'item', ...ITEM_POOL.find(x=>x.id==='growth_hormones')};
                 applyItem(item);
                 showToast('⚡ Попрошайка дал предмет на скорость и ушёл');
+                addChatMessage(localPlayer.name, 'получил ⚡ Growth Hormones от попрошайки','user');
             } else {
                 const kind = PICKUP_POOL[(h + 1) % PICKUP_POOL.length];
                 applyItem({itemId:'beggar_pickup', type:'pickup', ...kind});
                 showToast(`🎁 Попрошайка дал ${kind.name} и ушёл`);
+                addChatMessage(localPlayer.name, `получил ${kind.icon} ${kind.name} от попрошайки`,'user');
             }
             beggarTrades.add(beggarTradeKey());
             renderItemHud();
@@ -1249,13 +1287,79 @@
             ctx.restore();
         }
 
+        function drawBeggarRoom() {
+            const x=400,y=300, gone=beggarTrades.has(beggarTradeKey());
+            ctx.save();
+            ctx.fillStyle='#17110d'; ctx.fillRect(105,95,590,330);
+            ctx.strokeStyle='#8b5e34'; ctx.lineWidth=5; ctx.strokeRect(105,95,590,330);
+            if(!gone){
+                ctx.fillStyle='#b08968'; ctx.beginPath(); ctx.arc(x,y-48,29,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle='#17110d'; ctx.beginPath(); ctx.arc(x-9,y-52,4,0,Math.PI*2); ctx.arc(x+9,y-52,4,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle='#4b2e1f'; ctx.beginPath(); ctx.roundRect(x-42,y-15,84,82,18); ctx.fill();
+                ctx.fillStyle='#facc15'; ctx.font='bold 15px monospace'; ctx.textAlign='center'; ctx.fillText('ПОПРОШАЙКА',x,130);
+                ctx.font='12px monospace'; ctx.fillStyle='#fde68a'; ctx.fillText('Подойди и нажми E / SPACE',x,410);
+                ctx.font='28px serif'; ctx.fillText('🪙',x-55,y+35);
+                ctx.font='bold 12px monospace'; ctx.fillText('1 монетка',x+45,y+38);
+            } else {
+                // После ухода остаётся пьедестал со скоростным предметом.
+                const px=400, py=300;
+                ctx.fillStyle='#21170a'; ctx.strokeStyle='#050403'; ctx.lineWidth=5; ctx.fillRect(px-32,py+18,64,14); ctx.strokeRect(px-32,py+18,64,14);
+                ctx.fillStyle='#8c6a25'; ctx.fillRect(px-5,py-15,10,35);
+                ctx.fillStyle='#f7c948'; ctx.beginPath(); ctx.arc(px,py-20,20,0,Math.PI*2); ctx.fill();
+                ctx.font='29px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🧪',px,py-20);
+                ctx.fillStyle='#fde68a'; ctx.font='bold 12px monospace'; ctx.fillText('GROWTH HORMONES',px,py+52);
+                ctx.fillText('ПОПРОШАЙКА УШЁЛ',px,110);
+            }
+            ctx.restore();
+        }
+
+        function shopKey(){ return roomKey(); }
+        function shopItems(rx,ry){
+            const h=Math.floor(coordHash(rx*7+3,ry*11-2)*100000);
+            const slots=[{x:250,y:250},{x:400,y:250},{x:550,y:250}];
+            return [0,1,2].map((i)=>{
+                const item = ITEM_POOL[(h+i*5)%ITEM_POOL.length];
+                return {itemId:`shop_${i}`,type:'item',...item,cost: i===1?3:2,...slots[i]};
+            });
+        }
+
+        function buyShopItem(index){
+            if(!isShopRoom(localPlayer.rx,localPlayer.ry)) return;
+            const key=shopKey(); if(shopPurchases.has(`${key}:${index}`)) return;
+            const item=shopItems(localPlayer.rx,localPlayer.ry)[index];
+            if(inventory.coins<item.cost){showToast(`Нужно ${item.cost} 🪙`);return;}
+            inventory.coins-=item.cost; shopPurchases.add(`${key}:${index}`); applyItem(item);
+            addChatMessage(localPlayer.name,`купил ${item.icon} ${item.name}`,'user');
+            const packet={type:'shop_buy',roomKey:key,index};
+            if(isRoomHost) broadcast(packet); else sendToConnection(hostConnection,packet);
+            renderItemHud();
+        }
+
+        function drawShopRoom(){
+            ctx.save();
+            ctx.fillStyle='#241b10'; ctx.fillRect(105,95,590,330);
+            ctx.strokeStyle='#a8793d'; ctx.lineWidth=5; ctx.strokeRect(105,95,590,330);
+            ctx.fillStyle='#d6a85a'; ctx.font='bold 17px monospace'; ctx.textAlign='center'; ctx.fillText('МАГАЗИН',400,125);
+            shopItems(localPlayer.rx,localPlayer.ry).forEach((item,i)=>{
+                const bought=shopPurchases.has(`${shopKey()}:${i}`); const {x,y}=item;
+                ctx.fillStyle='#21170a'; ctx.strokeStyle='#050403'; ctx.lineWidth=5; ctx.fillRect(x-30,y+22,60,14); ctx.strokeRect(x-30,y+22,60,14);
+                ctx.fillStyle='#8c6a25'; ctx.fillRect(x-5,y-12,10,34);
+                if(!bought){ctx.fillStyle='#f7c948';ctx.beginPath();ctx.arc(x,y-17,20,0,Math.PI*2);ctx.fill();ctx.font='29px serif';ctx.fillText(item.icon,x,y-17);ctx.fillStyle='#fde68a';ctx.font='bold 12px monospace';ctx.fillText(`${item.cost} 🪙`,x,y+52);}
+                else {ctx.fillStyle='#777';ctx.font='bold 10px monospace';ctx.fillText('КУПЛЕНО',x,y+52);}
+            });
+            // Даммик по центру магазина.
+            const x=400,y=365; ctx.fillStyle='#d6d3d1';ctx.beginPath();ctx.arc(x,y-25,24,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#000';ctx.lineWidth=4;ctx.stroke();ctx.fillStyle='#111';ctx.beginPath();ctx.arc(x-8,y-27,3,0,Math.PI*2);ctx.arc(x+8,y-27,3,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f59e0b';ctx.fillRect(x-48,y+5,96,9);
+            ctx.fillStyle='#ddd';ctx.font='bold 11px monospace';ctx.fillText('KEEPER DUMMY',x,y+42);
+            ctx.restore();
+        }
+
         function getRoomCoin(rx, ry) {
             if (rx === 0 && ry === 0 || isGoldenRoom(rx,ry) || isKeeperRoom(rx,ry) || isBeggarRoom(rx,ry)) return null;
             // Один шанс спавна на вход: максимум одна монетка в комнате.
             const h = coordHash(rx * 19 + 7, ry * 43 - 11);
             if (h > 0.22) return null;
-            const posHash = Math.floor(coordHash(rx * 53 - 3, ry * 29 + 8) * 4);
-            const positions=[{x:130,y:120},{x:670,y:120},{x:130,y:380},{x:670,y:380}];
+            const posHash = Math.floor(coordHash(rx * 53 - 3, ry * 29 + 8) * 5);
+            const positions=[{x:130,y:120},{x:670,y:120},{x:130,y:380},{x:670,y:380},{x:400,y:250}];
             return {itemId:'room_coin', type:'pickup', id:'coin', name:'Монетка', icon:'🪙', desc:'+1 монета', kind:'coin', ...positions[posHash]};
         }
 
@@ -1279,7 +1383,7 @@
         }
 
         function getRoomObstacles(rx, ry) {
-            if (isGoldenRoom(rx, ry) || isKeeperRoom(rx, ry) || isBeggarRoom(rx, ry)) return [];
+            if (isGoldenRoom(rx, ry) || isKeeperRoom(rx, ry) || isBeggarRoom(rx, ry) || isShopRoom(rx,ry)) return [];
             if (rx === 0 && ry === 0) return TEMPLATES[0];
             const seed = Math.abs(Math.sin(rx * 12.9898 + ry * 78.233) * 43758.5453) % 1;
             const templateIdx = Math.floor(seed * TEMPLATES.length);
@@ -1373,7 +1477,7 @@
             for (let i=projectiles.length-1;i>=0;i--) {
                 const p=projectiles[i];
                 p.x += p.vx*dt; p.y += p.vy*dt; p.life -= dt;
-                if (isKeeperRoom(localPlayer.rx,localPlayer.ry) && p.x>345 && p.x<455 && p.y>255 && p.y<355) {
+                if (isDamageDummyRoom(localPlayer.rx,localPlayer.ry) && p.x>345 && p.x<455 && p.y>255 && p.y<355) {
                     const damage = Number(p.damage || localPlayer.stats.damage);
                     registerDummyHit(damage,p.x,p.y,p.ownerName);
                     const packet={type:'dummy_hit',damage,x:p.x,y:p.y,ownerName:p.ownerName,rx:p.rx,ry:p.ry};
@@ -1381,6 +1485,14 @@
                     projectiles.splice(i,1); continue;
                 }
                 if (p.x<WALL_THICKNESS || p.x>ROOM_WIDTH-WALL_THICKNESS || p.y<WALL_THICKNESS || p.y>ROOM_HEIGHT-WALL_THICKNESS || p.life<=0) projectiles.splice(i,1);
+            }
+        }
+
+        function interactNearby(){
+            if(isBeggarRoom(localPlayer.rx,localPlayer.ry)){ tradeWithBeggar(); return; }
+            if(isShopRoom(localPlayer.rx,localPlayer.ry)){
+                const near=shopItems(localPlayer.rx,localPlayer.ry).map((it,i)=>({it,i,d:Math.hypot(localPlayer.x-it.x,localPlayer.y-it.y)})).sort((a,b)=>a.d-b.d)[0];
+                if(near && near.d<75) buyShopItem(near.i);
             }
         }
 
@@ -1417,7 +1529,7 @@
                 let newX = localPlayer.x + dx * moveSpeed * dt;
                 let newY = localPlayer.y + dy * moveSpeed * dt;
 
-                if (!activeCheats.has('IDDQD') && localPlayer.character !== 'azazel') {
+                if (!activeCheats.has('IDDQD') && localPlayer.character !== 'azazel' && localPlayer.character !== 'lost') {
                     const obstacles = getRoomObstacles(localPlayer.rx, localPlayer.ry);
                     obstacles.forEach(obs => {
                         if (obs.type === 'rock') {
@@ -1487,11 +1599,12 @@
             }
             collectNearbyItem();
             collectRoomCoin();
-            if (isBeggarRoom(localPlayer.rx, localPlayer.ry) && (keys.e || keys.space)) tradeWithBeggar();
+            if (keys.e || keys.space) interactNearby();
         }
 
         function onRoomChange() {
             audio.playDoor();
+            ensureRoomNeighbors(localPlayer.rx, localPlayer.ry);
             projectiles = [];
             activeBombs = [];
             const coordKey = `${localPlayer.rx},${localPlayer.ry}`;
@@ -1509,6 +1622,14 @@
         }
 
         function renderGame() {
+            const mi=document.getElementById('mobileInteract');
+            if(mi){
+                const nearBeggar=isBeggarRoom(localPlayer.rx,localPlayer.ry) && !beggarTrades.has(beggarTradeKey());
+                const nearShop=isShopRoom(localPlayer.rx,localPlayer.ry) && shopItems(localPlayer.rx,localPlayer.ry).some(it=>!shopPurchases.has(`${roomKey()}:${shopItems(localPlayer.rx,localPlayer.ry).indexOf(it)}`) && Math.hypot(localPlayer.x-it.x,localPlayer.y-it.y)<80);
+                mi.classList.toggle('hidden', !(nearBeggar || nearShop));
+                mi.textContent=nearShop?'КУПИТЬ':'ВЗЯТЬ';
+            }
+
             ctx.save();
             ctx.fillStyle = '#0a0808';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1570,6 +1691,8 @@
                 drawGoldenRoom(goldenRoomItems());
             }
 
+            drawDoorFrames(theme, doors);
+
             const obstacles = getRoomObstacles(localPlayer.rx, localPlayer.ry);
             obstacles.forEach(obs => {
                 if (obs.type === 'rock') {
@@ -1623,6 +1746,7 @@
 
             if (isKeeperRoom(localPlayer.rx, localPlayer.ry)) drawKeeperRoom();
             if (isBeggarRoom(localPlayer.rx, localPlayer.ry)) drawBeggarRoom();
+            if (isShopRoom(localPlayer.rx, localPlayer.ry)) drawShopRoom();
             if (getRoomCoin(localPlayer.rx, localPlayer.ry)) drawRoomCoin();
 
             activeBombs.forEach(b => {
@@ -1665,6 +1789,22 @@
 
             ctx.restore();
             renderItemDescription();
+        }
+
+        function drawDoorFrames(theme, doors) {
+            const special = isGoldenRoom(localPlayer.rx,localPlayer.ry);
+            const shop = isShopRoom(localPlayer.rx,localPlayer.ry);
+            Object.entries(doors).forEach(([dir,open])=>{
+                if(!open) return;
+                const color=special?'#facc15':shop?'#a8793d':(theme.door||theme.border);
+                ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=7; ctx.lineJoin='round';
+                if(dir==='up'||dir==='down'){const y=dir==='up'?7:ROOM_HEIGHT-7;ctx.strokeRect(ROOM_WIDTH/2-DOOR_SIZE/2,y,DOOR_SIZE,6);}
+                else {const x=dir==='left'?7:ROOM_WIDTH-7;ctx.strokeRect(x,ROOM_HEIGHT/2-DOOR_SIZE/2,6,DOOR_SIZE);}
+                ctx.fillStyle=color; ctx.font='20px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+                if(dir==='up'||dir==='down') ctx.fillText(special?'♛':shop?'🪙':'◆',ROOM_WIDTH/2,dir==='up'?17:ROOM_HEIGHT-17);
+                else ctx.fillText(special?'♛':shop?'🪙':'◆',dir==='left'?17:ROOM_WIDTH-17,ROOM_HEIGHT/2);
+                ctx.restore();
+            });
         }
 
         function drawWallSegment(x, y, w, h) {
