@@ -124,6 +124,15 @@
         let roomJoinBusy = false;
         let isRoomHost = false;
         let peerReady = false;
+        const networkProjectileIds = new Set();
+        const takenItems = new Set();
+        let floatingHits = [];
+        let dummyHits = [];
+        let itemHudHidden = new Set();
+        let allItemsHudHidden = false;
+        let dummyDamageTotal = 0;
+        let dummyDamageEvents = [];
+
 
         function loadPeerJS() {
             return new Promise((resolve, reject) => {
@@ -172,6 +181,27 @@
                     if (p && p.id && p.id !== myPlayerId) remotePlayers[p.id] = p;
                 });
                 updatePlayerCount();
+            } else if (packet.type === 'tear') {
+                if (packet.projectile && packet.projectile.ownerId !== myPlayerId) {
+                    const id = packet.projectile.id;
+                    if (!networkProjectileIds.has(id)) {
+                        networkProjectileIds.add(id);
+                        projectiles.push({...packet.projectile, remote: true});
+                    }
+                }
+                if (isRoomHost) broadcast(packet, senderId);
+            } else if (packet.type === 'item_taken') {
+                if (packet.roomKey && packet.itemId) {
+                    takenItems.add(`${packet.roomKey}:${packet.itemId}`);
+                    renderItemHud();
+                    if (isRoomHost) broadcast(packet, senderId);
+                }
+            } else if (packet.type === 'item_state') {
+                (packet.taken || []).forEach(k => takenItems.add(k));
+                renderItemHud();
+            } else if (packet.type === 'dummy_hit') {
+                registerDummyHit(packet.damage || 0, packet.x, packet.y, packet.ownerName || 'Player');
+                if (isRoomHost) broadcast(packet, senderId);
             } else if (packet.type === 'chat') {
                 if (packet.message) {
                     chatLogs.push(packet.message);
@@ -182,7 +212,7 @@
                 }
             } else if (packet.type === 'hello') {
                 if (isRoomHost) {
-                    sendToConnection(packet.conn || null, {type:'noop'});
+                    sendToConnection(packet.conn || null, {type:'item_state', taken:[...takenItems]});
                 }
             }
         }
@@ -196,6 +226,7 @@
                     type: 'player_list',
                     players: Object.values(remotePlayers)
                 });
+                sendToConnection(conn, { type: 'item_state', taken: [...takenItems] });
                 sendToConnection(conn, localPlayerPacket());
                 if (isRoomHost) broadcast(localPlayerPacket(), conn.peer);
             });
@@ -323,6 +354,17 @@
             else if (!saved) await createNetworkRoom(generateRoomCode(), true);
         }
 
+        function setupItemMenu() {
+            const toggle=document.getElementById('btnToggleItems');
+            const menu=document.getElementById('itemMenu');
+            const all=document.getElementById('btnHideAllItems');
+            if(toggle) toggle.addEventListener('click',()=>menu.classList.toggle('hidden'));
+            if(all) all.addEventListener('click',()=>{ allItemsHudHidden=!allItemsHudHidden; all.textContent=allItemsHudHidden?'Показать HUD':'Скрыть HUD'; renderItemHud(); });
+            document.querySelectorAll('[data-stat]').forEach(btn=>btn.addEventListener('click',()=>{ const id=btn.dataset.stat; if(itemHudHidden.has(id)) itemHudHidden.delete(id); else itemHudHidden.add(id); renderItemHud(); }));
+            renderItemHud();
+        }
+        setupItemMenu();
+
         // Загружаем PeerJS и автоматически создаём комнату при первом входе.
         autoJoinRoom().catch(err => {
             console.error(err);
@@ -432,7 +474,8 @@
             radius: 18,
             walkTimer: 0,
             isMoving: false,
-            lastShootTime: 0
+            lastShootTime: 0,
+            stats: { damage: 3.5, tears: 2.5, speed: 1, range: 1, shotSpeed: 1, luck: 0 }
         };
 
         let activeCheats = new Set();
@@ -559,6 +602,12 @@
             currentRoomId = null;
             remotePlayers = {};
             chatLogs = [];
+            projectiles = [];
+            networkProjectileIds.clear();
+            takenItems.clear();
+            inventory = {coins:0,keys:0,bombs:0};
+            localPlayer.stats = { damage:3.5, tears:2.5, speed:1, range:1, shotSpeed:1, luck:0 };
+            renderItemHud();
             renderChatMessages();
             updatePlayerCount();
         }
@@ -660,6 +709,7 @@
             localPlayer.y = ROOM_HEIGHT / 2;
             visitedRooms = new Set(["0,0"]);
             projectiles = [];
+            renderItemHud();
 
             document.getElementById('screenLobby').classList.add('hidden');
             document.getElementById('screenGame').classList.remove('hidden');
@@ -775,55 +825,232 @@
             }
         }
 
+        const ITEM_POOL = [
+            { id:'sad_onion', name:'Sad Onion', icon:'🧅', desc:'Слёзы становятся заметно быстрее.', stats:{tears:+0.55} },
+            { id:'magic_mushroom', name:'Magic Mushroom', icon:'🍄', desc:'Большой универсальный буст.', stats:{damage:+0.9,speed:+12,range:+35,shotSpeed:+0.05} },
+            { id:'pentagram', name:'Pentagram', icon:'✦', desc:'Сильнее слёзы, без лишней скорости.', stats:{damage:+1.15} },
+            { id:'lucky_foot', name:'Lucky Foot', icon:'🍀', desc:'Немного удачи.', stats:{luck:+2} },
+            { id:'growth_hormones', name:'Growth Hormones', icon:'🧪', desc:'Быстрее двигаешься и стреляешь.', stats:{speed:+18,shotSpeed:+0.08} },
+            { id:'cricket_head', name:"Cricket's Head", icon:'🐛', desc:'Очень сильный урон, но чуть медленнее выстрел.', stats:{damage:+1.35,shotSpeed:-0.08} },
+            { id:'inner_eye', name:'The Inner Eye', icon:'👁️', desc:'Больше слёз за раз, но слабее каждая.', stats:{tears:+0.8,damage:-0.35} },
+            { id:'rotten_baby', name:'Rotten Baby', icon:'🪰', desc:'Маленький бонус к урону и дальности.', stats:{damage:+0.45,range:+20} }
+        ];
+
+        const PICKUP_POOL = [
+            { id:'coin', name:'Монетка', icon:'🪙', desc:'+1 монета', kind:'coin' },
+            { id:'key', name:'Ключ', icon:'🔑', desc:'+1 ключ', kind:'key' },
+            { id:'bomb', name:'Бомба', icon:'💣', desc:'+1 бомба', kind:'bomb' }
+        ];
+
+        let inventory = { coins:0, keys:0, bombs:0 };
+
+        function coordHash(rx, ry) {
+            const n = Math.sin((rx + 41) * 127.1 + (ry + 17) * 311.7) * 43758.5453123;
+            return Math.abs(n - Math.floor(n));
+        }
+
+        function isGoldenRoom(rx, ry) {
+            if (rx === 0 && ry === 0) return false;
+            return coordHash(rx, ry) > 0.925;
+        }
+
+        function isKeeperRoom(rx, ry) {
+            if (isGoldenRoom(rx, ry) || (rx === 0 && ry === 0)) return false;
+            return coordHash(rx + 9, ry - 4) > 0.91;
+        }
+
+        function getGoldenItems(rx, ry) {
+            const h = Math.floor(coordHash(rx, ry) * 1000000);
+            const count = 2 + (h % 2);
+            const items = [];
+            const slots = [
+                {x:280,y:205},{x:400,y:170},{x:520,y:205}
+            ];
+            for (let i=0;i<count;i++) {
+                const isPickup = ((h >> (i+2)) % 100) < 28;
+                if (isPickup) {
+                    const pick = PICKUP_POOL[(h + i * 7) % PICKUP_POOL.length];
+                    items.push({ itemId:`p${i}`, type:'pickup', ...pick, x:slots[i].x, y:slots[i].y });
+                } else {
+                    const item = ITEM_POOL[(h + i * 11) % ITEM_POOL.length];
+                    items.push({ itemId:`i${i}`, type:'item', ...item, x:slots[i].x, y:slots[i].y });
+                }
+            }
+            return items;
+        }
+
+        function goldenRoomItems() {
+            return isGoldenRoom(localPlayer.rx, localPlayer.ry) ? getGoldenItems(localPlayer.rx, localPlayer.ry) : [];
+        }
+
+        function itemTaken(roomKey, itemId) {
+            return takenItems.has(`${roomKey}:${itemId}`);
+        }
+
+        function roomKey() { return `${localPlayer.rx},${localPlayer.ry}`; }
+
+        function applyItem(item) {
+            if (item.type === 'pickup') {
+                if (item.kind === 'coin') inventory.coins++;
+                if (item.kind === 'key') inventory.keys++;
+                if (item.kind === 'bomb') inventory.bombs++;
+                showToast(`${item.icon} ${item.name}`);
+                return;
+            }
+            const before = {...localPlayer.stats};
+            Object.entries(item.stats || {}).forEach(([k,v]) => {
+                if (typeof localPlayer.stats[k] === 'number') localPlayer.stats[k] += v;
+            });
+            localPlayer.stats.damage = Math.max(1.5, Math.min(8, localPlayer.stats.damage));
+            localPlayer.stats.tears = Math.max(1.5, Math.min(4.8, localPlayer.stats.tears));
+            localPlayer.stats.speed = Math.max(0.8, Math.min(1.35, localPlayer.stats.speed));
+            localPlayer.stats.range = Math.max(0.7, Math.min(1.8, localPlayer.stats.range));
+            localPlayer.stats.shotSpeed = Math.max(0.7, Math.min(1.35, localPlayer.stats.shotSpeed));
+            showToast(`${item.icon} ${item.name}: ${item.desc}`);
+            renderItemHud();
+        }
+
+        function collectNearbyItem() {
+            const items = goldenRoomItems();
+            if (!items.length) return;
+            const key = roomKey();
+            for (const item of items) {
+                if (itemTaken(key,item.itemId)) continue;
+                const d = Math.hypot(localPlayer.x-item.x, localPlayer.y-item.y);
+                if (d < 42) {
+                    takenItems.add(`${key}:${item.itemId}`);
+                    applyItem(item);
+                    const packet = {type:'item_taken', roomKey:key, itemId:item.itemId};
+                    if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection, packet);
+                    renderItemHud();
+                    break;
+                }
+            }
+        }
+
+        function renderItemHud() {
+            const hud = document.getElementById('itemHud');
+            const list = document.getElementById('itemHudList');
+            if (!hud || !list) return;
+            hud.classList.toggle('hidden', allItemsHudHidden);
+            list.innerHTML = '';
+            const entries = [
+                ['damage','⚔️ Урон',localPlayer.stats.damage.toFixed(1)],
+                ['tears','💧 Слёзы',localPlayer.stats.tears.toFixed(1)],
+                ['speed','👟 Скорость',localPlayer.stats.speed.toFixed(2)],
+                ['range','📏 Дальность',localPlayer.stats.range.toFixed(2)],
+                ['shotSpeed','⚡ Скорость слезы',localPlayer.stats.shotSpeed.toFixed(2)],
+                ['luck','🍀 Удача',localPlayer.stats.luck]
+            ];
+            entries.forEach(([id,label,val]) => {
+                if (itemHudHidden.has(id)) return;
+                const row=document.createElement('div'); row.className='item-stat';
+                row.innerHTML=`<span>${label}</span><b>${val}</b>`; list.appendChild(row);
+            });
+            const inv=document.createElement('div'); inv.className='item-inventory';
+            inv.textContent=`🪙 ${inventory.coins}  🔑 ${inventory.keys}  💣 ${inventory.bombs}`;
+            list.appendChild(inv);
+        }
+
+        function renderItemDescription() {
+            const box=document.getElementById('itemDescription');
+            if(!box) return;
+            const item=goldenRoomItems().find(it=>!itemTaken(roomKey(),it.itemId) && Math.hypot(localPlayer.x-it.x,localPlayer.y-it.y)<90);
+            if(!item){ box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+            box.innerHTML=`<b>${item.icon} ${item.name}</b><br><span>${item.desc}</span><br><small>Подойди ближе, чтобы взять</small>`;
+        }
+
+        function registerDummyHit(damage,x,y,ownerName='Player') {
+            if (!isKeeperRoom(localPlayer.rx,localPlayer.ry)) return;
+            const n=Math.max(0,Number(damage)||0);
+            dummyDamageTotal += n;
+            dummyDamageEvents.push({t:performance.now(),damage:n});
+            floatingHits.push({x:x||400,y:y||290,text:`-${n.toFixed(1)}`,life:0.8});
+        }
+
+        function dummyDps() {
+            const now=performance.now();
+            dummyDamageEvents=dummyDamageEvents.filter(e=>now-e.t<2000);
+            return dummyDamageEvents.reduce((a,e)=>a+e.damage,0)/2;
+        }
+
+        function drawGoldenRoom(items) {
+            ctx.save();
+            ctx.fillStyle='#6b4b0b'; ctx.fillRect(0,0,ROOM_WIDTH,ROOM_HEIGHT);
+            ctx.strokeStyle='rgba(255,220,80,.18)'; ctx.lineWidth=2;
+            for(let x=40;x<ROOM_WIDTH-40;x+=50) for(let y=40;y<ROOM_HEIGHT-40;y+=50) ctx.strokeRect(x,y,50,50);
+            ctx.fillStyle='rgba(255,214,70,.10)'; ctx.fillRect(40,40,ROOM_WIDTH-80,ROOM_HEIGHT-80);
+            items.forEach(item=>{
+                if(itemTaken(roomKey(),item.itemId)) return;
+                ctx.save();
+                if(item.type==='item'){
+                    ctx.fillStyle='#6b6258'; ctx.strokeStyle='#17110a'; ctx.lineWidth=4;
+                    ctx.fillRect(item.x-23,item.y+12,46,12); ctx.strokeRect(item.x-23,item.y+12,46,12);
+                    ctx.fillStyle='#8c8174'; ctx.fillRect(item.x-3,item.y-18,6,30);
+                    ctx.fillStyle='#f8d34e'; ctx.beginPath(); ctx.arc(item.x,item.y-20,15,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                } else {
+                    ctx.fillStyle='rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(item.x,item.y+15,17,7,0,0,Math.PI*2); ctx.fill();
+                    ctx.font='28px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y);
+                }
+                ctx.restore();
+            });
+            ctx.restore();
+        }
+
+        function drawKeeperRoom() {
+            const x=400,y=320;
+            ctx.save();
+            ctx.fillStyle='#211d1b'; ctx.strokeStyle='#000'; ctx.lineWidth=4;
+            ctx.beginPath(); ctx.ellipse(x,y,42,28,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#d6d3d1'; ctx.beginPath(); ctx.arc(x,y-18,24,0,Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#111'; ctx.beginPath(); ctx.arc(x-8,y-20,3,0,Math.PI*2); ctx.arc(x+8,y-20,3,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='#f59e0b'; ctx.fillRect(x-50,y+30,100,8); ctx.fillStyle='#111'; ctx.fillRect(x-46,y+32,92,4);
+            ctx.font='bold 13px monospace'; ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.fillText('DAMAGE DUMMY',x,y-58);
+            ctx.font='bold 12px monospace'; ctx.fillStyle='#facc15'; ctx.fillText(`DMG ${dummyDamageTotal.toFixed(1)}  •  DPS ${dummyDps().toFixed(1)}`,x,y+60);
+            floatingHits=floatingHits.filter(h=>h.life>0);
+            floatingHits.forEach(h=>{h.y-=18/60;h.life-=1/60;ctx.globalAlpha=Math.max(0,h.life);ctx.font='bold 18px monospace';ctx.fillStyle='#ef4444';ctx.fillText(h.text,h.x,h.y);});
+            ctx.restore();
+        }
+
         function getRoomObstacles(rx, ry) {
+            if (isGoldenRoom(rx, ry) || isKeeperRoom(rx, ry)) return [];
             if (rx === 0 && ry === 0) return TEMPLATES[0];
             const seed = Math.abs(Math.sin(rx * 12.9898 + ry * 78.233) * 43758.5453) % 1;
             const templateIdx = Math.floor(seed * TEMPLATES.length);
             return TEMPLATES[templateIdx];
         }
 
+        function makeProjectile(dirX, dirY, charInfo, isGreed=false) {
+            const id = myPlayerId + '_' + Math.random().toString(36).slice(2,9);
+            const attackType = isGreed ? 'fire' : charInfo.attackType;
+            const p = {
+                id, ownerId:myPlayerId, ownerName:localPlayer.name,
+                x:localPlayer.x, y:localPlayer.y-8,
+                vx:dirX * (isGreed ? 650 : 450) * localPlayer.stats.shotSpeed,
+                vy:dirY * (isGreed ? 650 : 450) * localPlayer.stats.shotSpeed,
+                color:isGreed ? '#facc15' : charInfo.tearColor,
+                type:attackType, life:0.9 * localPlayer.stats.range,
+                damage:localPlayer.stats.damage, remote:false
+            };
+            projectiles.push(p);
+            networkProjectileIds.add(id);
+            const packet={type:'tear', projectile:{...p, remote:true}};
+            if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection,packet);
+        }
+
         function shootProjectile(dirX, dirY) {
             const now = performance.now();
-            const fireDelay = activeCheats.has('MADNESS') ? 70 : 200;
+            const fireDelay = Math.max(85, (activeCheats.has('MADNESS') ? 70 : 200) / localPlayer.stats.tears);
             if (now - localPlayer.lastShootTime < fireDelay) return;
             localPlayer.lastShootTime = now;
-
             const charInfo = CHARACTERS[localPlayer.character] || CHARACTERS.isaac;
             audio.playShoot(charInfo.attackType);
-
             const isGreed = activeCheats.has('GREED');
-            const tearColor = isGreed ? '#facc15' : charInfo.tearColor;
-            const attackType = isGreed ? 'fire' : charInfo.attackType;
-
             if (activeCheats.has('MADNESS')) {
-                const dirs = [
-                    { x: dirX, y: dirY },
-                    { x: -dirX, y: -dirY },
-                    { x: dirY, y: dirX },
-                    { x: -dirY, y: -dirX }
-                ];
-                dirs.forEach(d => {
-                    projectiles.push({
-                        x: localPlayer.x,
-                        y: localPlayer.y - 8,
-                        vx: d.x * 550,
-                        vy: d.y * 550,
-                        color: '#ef4444',
-                        type: 'fire',
-                        life: 0.85
-                    });
-                });
-            } else {
-                projectiles.push({
-                    x: localPlayer.x,
-                    y: localPlayer.y - 8,
-                    vx: dirX * (isGreed ? 650 : 450),
-                    vy: dirY * (isGreed ? 650 : 450),
-                    color: tearColor,
-                    type: attackType,
-                    life: 0.9
-                });
-            }
+                const dirs=[{x:dirX,y:dirY},{x:-dirX,y:-dirY},{x:dirY,y:dirX},{x:-dirY,y:-dirX}];
+                dirs.forEach(d=>makeProjectile(d.x,d.y,charInfo,isGreed));
+            } else makeProjectile(dirX,dirY,charInfo,isGreed);
         }
 
         function gameLoop(now) {
@@ -839,16 +1066,17 @@
         }
 
         function updateProjectiles(dt) {
-            for (let i = projectiles.length - 1; i >= 0; i--) {
-                const p = projectiles[i];
-                p.x += p.vx * dt;
-                p.y += p.vy * dt;
-                p.life -= dt;
-
-                if (p.x < WALL_THICKNESS || p.x > ROOM_WIDTH - WALL_THICKNESS ||
-                    p.y < WALL_THICKNESS || p.y > ROOM_HEIGHT - WALL_THICKNESS || p.life <= 0) {
-                    projectiles.splice(i, 1);
+            for (let i=projectiles.length-1;i>=0;i--) {
+                const p=projectiles[i];
+                p.x += p.vx*dt; p.y += p.vy*dt; p.life -= dt;
+                if (isKeeperRoom(localPlayer.rx,localPlayer.ry) && p.x>345 && p.x<455 && p.y>255 && p.y<355) {
+                    const damage = Number(p.damage || localPlayer.stats.damage);
+                    registerDummyHit(damage,p.x,p.y,p.ownerName);
+                    const packet={type:'dummy_hit',damage,x:p.x,y:p.y,ownerName:p.ownerName};
+                    if(!p.remote){ if(isRoomHost) broadcast(packet); else sendToConnection(hostConnection,packet); }
+                    projectiles.splice(i,1); continue;
                 }
+                if (p.x<WALL_THICKNESS || p.x>ROOM_WIDTH-WALL_THICKNESS || p.y<WALL_THICKNESS || p.y>ROOM_HEIGHT-WALL_THICKNESS || p.life<=0) projectiles.splice(i,1);
             }
         }
 
@@ -881,8 +1109,9 @@
                     audio.playStep();
                 }
 
-                let newX = localPlayer.x + dx * (localPlayer.speed + (activeCheats.has('MADNESS') ? 70 : 0)) * dt;
-                let newY = localPlayer.y + dy * (localPlayer.speed + (activeCheats.has('MADNESS') ? 70 : 0)) * dt;
+                let moveSpeed = localPlayer.speed * localPlayer.stats.speed + (activeCheats.has('MADNESS') ? 70 : 0);
+                let newX = localPlayer.x + dx * moveSpeed * dt;
+                let newY = localPlayer.y + dy * moveSpeed * dt;
 
                 if (!activeCheats.has('IDDQD')) {
                     const obstacles = getRoomObstacles(localPlayer.rx, localPlayer.ry);
@@ -944,6 +1173,7 @@
             } else {
                 localPlayer.x = Math.max(localPlayer.radius, Math.min(ROOM_WIDTH - localPlayer.radius, localPlayer.x));
             }
+            collectNearbyItem();
         }
 
         function onRoomChange() {
@@ -957,7 +1187,9 @@
             document.getElementById('uiPlayerCount').innerText = String(sameRoomCount + 1);
             
             const currentTheme = getRoomTheme(localPlayer.rx, localPlayer.ry);
-            document.getElementById('uiRoomThemeTitle').innerText = currentTheme.label;
+            document.getElementById('uiRoomThemeTitle').innerText = isGoldenRoom(localPlayer.rx, localPlayer.ry) ? '💛 Золотая комната' : (isKeeperRoom(localPlayer.rx, localPlayer.ry) ? '🎯 Комната Дамми' : currentTheme.label);
+            dummyDamageTotal = 0; dummyDamageEvents = []; floatingHits = [];
+            renderItemHud();
         }
 
         function renderGame() {
@@ -1004,6 +1236,10 @@
             ctx.fillRect(ROOM_WIDTH / 2 - DOOR_SIZE / 2, ROOM_HEIGHT - WALL_THICKNESS, DOOR_SIZE, WALL_THICKNESS);
             ctx.fillRect(0, ROOM_HEIGHT / 2 - DOOR_SIZE / 2, WALL_THICKNESS, DOOR_SIZE);
             ctx.fillRect(ROOM_WIDTH - WALL_THICKNESS, ROOM_HEIGHT / 2 - DOOR_SIZE / 2, WALL_THICKNESS, DOOR_SIZE);
+
+            if (isGoldenRoom(localPlayer.rx, localPlayer.ry)) {
+                drawGoldenRoom(goldenRoomItems());
+            }
 
             const obstacles = getRoomObstacles(localPlayer.rx, localPlayer.ry);
             obstacles.forEach(obs => {
@@ -1056,6 +1292,8 @@
                 }
             });
 
+            if (isKeeperRoom(localPlayer.rx, localPlayer.ry)) drawKeeperRoom();
+
             projectiles.forEach(p => {
                 ctx.save();
                 ctx.fillStyle = p.color;
@@ -1083,6 +1321,7 @@
             drawFlashCharacter(localPlayer.x, localPlayer.y, localPlayer.character, localPlayer.name, localPlayer.walkTimer, localPlayer.isMoving);
 
             ctx.restore();
+            renderItemDescription();
         }
 
         function drawWallSegment(x, y, w, h) {

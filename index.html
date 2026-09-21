@@ -71,7 +71,7 @@
             </div>
 
             <div class="text-[10px] text-neutral-500 text-center leading-relaxed">
-                Сетевой режим: Синхронизация позиций, комнат и чата через облачную базу данных в реальном времени.
+                Сетевой режим: WebRTC/P2P. Позиции, слёзы, комнаты, предметы и чат синхронизируются между игроками.
             </div>
 
         </div>
@@ -103,6 +103,26 @@
         </div>
 
         <!-- Mute, Exit & Mobile Chat Toggle Buttons -->
+        <div id="itemHud" class="item-hud absolute top-40 right-3 z-20">
+            <div class="item-hud-head"><span>ITEMS</span><button id="btnToggleItems" type="button">⚙</button></div>
+            <div id="itemHudList"></div>
+        </div>
+
+        <div id="itemDescription" class="item-description hidden absolute z-40"></div>
+
+        <div id="itemMenu" class="item-menu hidden absolute top-40 right-3 z-50">
+            <div class="item-menu-title">HUD предметов</div>
+            <button id="btnHideAllItems" type="button">Скрыть HUD</button>
+            <div class="item-menu-grid">
+                <button type="button" data-stat="damage">⚔️ Урон</button>
+                <button type="button" data-stat="tears">💧 Слёзы</button>
+                <button type="button" data-stat="speed">👟 Скорость</button>
+                <button type="button" data-stat="range">📏 Дальность</button>
+                <button type="button" data-stat="shotSpeed">⚡ Скорость</button>
+                <button type="button" data-stat="luck">🍀 Удача</button>
+            </div>
+        </div>
+
         <div class="absolute top-20 left-3 z-20 flex flex-col gap-2">
             <button id="btnMute" class="bg-neutral-900/90 border-2 border-black px-3 py-1.5 rounded text-xs font-bold text-neutral-300 hover:text-white shadow-xl">
                 🔊 Звук: Вкл
