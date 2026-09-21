@@ -1,32 +1,186 @@
-<!-- ИГРОВОЙ ЭКРАН -->
-<div id="screenGame" class="hidden relative w-full h-screen bg-neutral-900 overflow-hidden flex-col items-center justify-center">
-    
-    <!-- Верхний интерфейс (UI) -->
-    <div class="absolute top-4 left-4 z-10 flex flex-col gap-2">
-        <div class="bg-black/70 backdrop-blur p-3 rounded-xl border border-neutral-700 text-xs text-neutral-300 shadow-lg">
-            <p>🔑 КОМНАТА: <span id="uiRoomCode" class="font-bold text-amber-400">SOLO</span></p>
-            <p>👤 <span id="uiPlayerName" class="font-bold text-pink-300">Isaac</span> | 👥 Игроков: <span id="uiPlayerCount" class="font-bold text-emerald-400">1</span></p>
-            <p>📍 Координаты: <span id="uiCoord" class="font-bold text-sky-400">(0, 0)</span></p>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Isaac & Madness Flash Online - Room Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik+Dirt&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="flex flex-col h-screen w-screen bg-neutral-950 text-neutral-100 overflow-hidden select-none">
+
+    <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-neutral-900 border-2 border-amber-500 text-amber-300 px-5 py-2.5 rounded-lg font-bold shadow-2xl transition-all duration-300 opacity-0 pointer-events-none text-xs md:text-sm flex items-center gap-2">
+        <span id="toastMsg">Сообщение</span>
+    </div>
+
+    <div id="screenLobby" class="flex flex-col items-center justify-center flex-1 p-3 md:p-6 overflow-y-auto z-10">
+        <div class="w-full max-w-2xl flash-card p-5 flex flex-col gap-4 max-h-[95vh] overflow-y-auto custom-scroll">
+            
+            <div class="text-center space-y-1">
+                <div class="inline-block bg-red-950 text-red-400 border border-red-800 text-[10px] font-bold px-2.5 py-0.5 rounded uppercase tracking-widest mb-1">
+                    Flash / Madness Combat Multiverse
+                </div>
+                <h1 class="font-dirt text-3xl md:text-4xl text-amber-400 tracking-wide drop-shadow-[0_4px_0_#000]">
+                    ISAAC <span class="text-red-600">ONLINE</span>
+                </h1>
+                <p class="text-[11px] text-neutral-400 uppercase tracking-widest font-semibold">Исследование комнат, Уникальные Персонажи и Чат</p>
+            </div>
+
+            <!-- Player Name Input -->
+            <div class="flex flex-col gap-1 bg-neutral-900/80 p-3 rounded border border-neutral-800">
+                <label class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Никнейм</label>
+                <input type="text" id="inputName" value="Isaac_Player" maxlength="12" class="bg-neutral-950 border-2 border-neutral-700 focus:border-amber-400 text-amber-200 text-center font-bold py-2 px-3 rounded outline-none text-sm font-mono">
+            </div>
+
+            <!-- Character Selector Grid -->
+            <div class="flex flex-col gap-1.5">
+                <label class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider flex justify-between items-center">
+                    <span>Выбор Персонажа</span>
+                    <span id="selectedCharTitle" class="text-amber-400 font-mono text-xs">Isaac</span>
+                </label>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="charSelectorGrid">
+                    <!-- Dynamic Character Cards inserted by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Room Buttons & Solo Mode -->
+            <div class="flex flex-col gap-2.5 mt-2">
+                <button id="btnPlaySolo" class="flash-btn flash-btn-red py-3 rounded text-xs font-bold font-flash uppercase tracking-wider flex items-center justify-center gap-2">
+                    <span>👤</span> Играть Оффлайн (Соло)
+                </button>
+
+                <div class="flex items-center gap-2">
+                    <input type="text" id="inputRoomId" placeholder="ID комнаты..." maxlength="6" class="flex-1 uppercase bg-neutral-900 border-2 border-neutral-700 focus:border-amber-400 text-amber-300 text-center font-mono font-bold py-2.5 px-3 rounded outline-none text-sm">
+                    <button id="btnJoinRoom" class="flash-btn py-2.5 px-5 rounded text-xs font-bold font-flash uppercase tracking-wider">
+                        Войти
+                    </button>
+                </div>
+
+                <button id="btnCreateRoom" class="flash-btn py-2.5 rounded text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center justify-center gap-2">
+                    <span>🗝️</span> Создать Мультиплеер Комнату
+                </button>
+
+                <div class="flex items-center gap-2 mt-1 pt-2 border-t border-neutral-800/80">
+                    <input type="text" id="inputCheatCode" placeholder="Секретный код..." maxlength="12" class="flex-1 uppercase bg-neutral-900 border-2 border-red-900/60 focus:border-red-500 text-red-400 text-center font-mono font-bold py-2 px-3 rounded outline-none text-xs">
+                    <button id="btnApplyCheat" class="flash-btn flash-btn-red py-2 px-4 rounded text-[11px] font-bold uppercase tracking-wider">
+                        Ввести
+                    </button>
+                </div>
+            </div>
+
+            <div class="text-[10px] text-neutral-500 text-center leading-relaxed">
+                Управление: <span class="text-neutral-300 font-bold">WASD / Джойстик</span> — Ходьба, <span class="text-neutral-300 font-bold">Стрелки / Кнопки атаки</span> — Стрельба.
+            </div>
+
         </div>
-        <button id="btnSound" class="bg-neutral-800 hover:bg-neutral-700 text-white text-xs px-3 py-1.5 rounded-lg border border-neutral-600 transition">🔊 Звук: Вкл</button>
-        <button id="btnLeaveGame" class="bg-rose-900/80 hover:bg-rose-800 text-white text-xs px-3 py-1.5 rounded-lg border border-rose-700 transition">🚪 В Лобби</button>
     </div>
 
-    <!-- Миникарта -->
-    <div class="absolute top-4 right-4 z-10 bg-black/80 p-2 rounded-xl border border-neutral-700 flex flex-col items-center">
-        <span class="text-[10px] font-bold text-neutral-400 tracking-wider mb-1">КАРТА</span>
-        <canvas id="minimapCanvas" width="100" height="100" class="bg-neutral-950 rounded border border-neutral-800"></canvas>
-    </div>
+    <div id="screenGame" class="hidden flex-col h-full w-full relative">
+        
+        <!-- Top HUD Header -->
+        <div class="absolute top-3 left-3 right-3 z-20 flex items-start justify-between pointer-events-none">
+            
+            <!-- Room Info & Status -->
+            <div class="bg-neutral-900/90 border-2 border-black p-2.5 rounded-lg shadow-xl pointer-events-auto flex flex-col gap-1 text-xs">
+                <div class="flex items-center gap-2 font-mono font-bold text-amber-400">
+                    <span>🗝️ КОМНАТА:</span>
+                    <span id="uiRoomCode" class="text-white select-all">SOLO</span>
+                    <button id="btnCopyRoom" class="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] px-2 py-0.5 rounded border border-neutral-600 hidden">Копировать</button>
+                </div>
+                <div class="flex items-center gap-2 text-[11px] text-neutral-400">
+                    <span>👤 <span id="uiCharTitle" class="text-amber-300 font-bold">Isaac</span></span>
+                    <span>|</span>
+                    <span id="uiCoord" class="font-mono text-neutral-300">(0, 0)</span>
+                    <span>|</span>
+                    <span class="text-emerald-400 font-bold">👥 <span id="uiPlayerCount">1</span></span>
+                </div>
+            </div>
 
-    <!-- ОСНОВНОЙ ИГРОВОЙ CANVAS -->
-    <div class="w-full h-full flex items-center justify-center">
-        <canvas id="gameCanvas" class="block bg-neutral-950 shadow-2xl rounded-lg border-2 border-neutral-800"></canvas>
-    </div>
+            <!-- Isaac Top-Right Minimap -->
+            <div class="bg-neutral-950/95 border-2 border-neutral-800 p-2 rounded-lg shadow-2xl pointer-events-auto flex flex-col items-center">
+                <div class="text-[9px] font-flash text-neutral-400 mb-1 uppercase tracking-wider">КАРТА</div>
+                <canvas id="minimapCanvas" width="110" height="110" class="bg-neutral-900 rounded border border-neutral-800"></canvas>
+            </div>
 
-    <!-- Уведомления (Toast) -->
-    <div id="toast" class="absolute top-4 left-1/2 -translate-x-1/2 z-20 transition-all duration-300 opacity-0 pointer-events-none">
-        <div class="bg-amber-500/20 border border-amber-500 text-amber-300 px-4 py-2 rounded-xl text-sm font-semibold backdrop-blur shadow-lg">
-            <span id="toastMsg">Добро пожаловать!</span>
         </div>
+
+        <!-- Mute, Exit & Mobile Chat Toggle Buttons -->
+        <div class="absolute top-20 left-3 z-20 flex flex-col gap-2">
+            <button id="btnMute" class="bg-neutral-900/90 border-2 border-black px-3 py-1.5 rounded text-xs font-bold text-neutral-300 hover:text-white shadow-xl">
+                🔊 Звук: Вкл
+            </button>
+            <button id="btnLeaveGame" class="bg-neutral-900/90 border-2 border-black px-3 py-1.5 rounded text-xs font-bold text-red-400 hover:text-red-300 shadow-xl">
+                🚪 В Лобби
+            </button>
+            <button id="btnToggleChat" class="bg-amber-600 hover:bg-amber-500 border-2 border-black px-3 py-1.5 rounded text-xs font-bold text-black shadow-xl flex items-center gap-1">
+                💬 <span id="btnToggleChatText">Чат</span>
+            </button>
+        </div>
+
+        <!-- Main Game Canvas -->
+        <canvas id="gameCanvas" class="w-full h-full block bg-black"></canvas>
+
+        <!-- Bottom Mobile D-Pad Controls (Left Side) -->
+        <div id="mobileDpad" class="absolute bottom-4 left-4 z-20 grid grid-cols-3 gap-1.5 w-32 h-32 sm:w-36 sm:h-36 opacity-90">
+            <div></div>
+            <button id="btnUp" class="dpad-btn">▲</button>
+            <div></div>
+            <button id="btnLeft" class="dpad-btn">◄</button>
+            <div class="flex items-center justify-center font-bold text-neutral-600 text-[9px]">MOVE</div>
+            <button id="btnRight" class="dpad-btn">►</button>
+            <div></div>
+            <button id="btnDown" class="dpad-btn">▼</button>
+            <div></div>
+        </div>
+
+        <!-- Bottom Mobile Shoot Controls (Right Side) -->
+        <div id="mobileShooter" class="absolute bottom-4 right-4 sm:right-6 z-20 grid grid-cols-3 gap-1.5 w-28 h-28 sm:w-32 sm:h-32 opacity-90">
+            <div></div>
+            <button id="btnShootUp" class="shoot-btn">▲</button>
+            <div></div>
+            <button id="btnShootLeft" class="shoot-btn">◄</button>
+            <div class="flex items-center justify-center font-bold text-red-950 text-[8px]">FIRE</div>
+            <button id="btnShootRight" class="shoot-btn">►</button>
+            <div></div>
+            <button id="btnShootDown" class="shoot-btn">▼</button>
+            <div></div>
+        </div>
+
+        <!-- Floating Collapsible Mobile-Friendly Chat Drawer -->
+        <div id="chatBoxContainer" class="absolute bottom-36 sm:bottom-4 right-4 z-30 w-72 sm:w-80 max-w-[85vw] bg-neutral-900/95 border-2 border-black rounded-lg p-2.5 flex flex-col gap-2 shadow-2xl backdrop-blur-md transition-all duration-200">
+            <div class="flex items-center justify-between text-[10px] font-bold text-amber-400 border-b border-neutral-800 pb-1">
+                <span class="flex items-center gap-1">💬 <span id="uiRoomThemeTitle">ИГРОВОЙ ЧАТ</span></span>
+                <div class="flex items-center gap-2">
+                    <span id="chatStatus" class="text-neutral-500 font-mono text-[9px]">Онлайн</span>
+                    <button id="btnCloseChat" class="text-neutral-400 hover:text-white font-bold text-xs px-1">✕</button>
+                </div>
+            </div>
+
+            <!-- Messages Stream Area -->
+            <div id="chatMessages" class="h-24 sm:h-32 overflow-y-auto custom-scroll flex flex-col gap-1 pr-1 text-xs font-sans">
+                <div class="text-[10px] text-neutral-400 italic">Добро пожаловать в чат комнаты!</div>
+            </div>
+
+            <!-- Quick Emoji / Phrase Chips -->
+            <div class="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+                <button class="quick-chip bg-neutral-800 hover:bg-neutral-700 text-[10px] px-2 py-0.5 rounded border border-neutral-700 whitespace-nowrap">Привет! 👋</button>
+                <button class="quick-chip bg-neutral-800 hover:bg-neutral-700 text-[10px] px-2 py-0.5 rounded border border-neutral-700 whitespace-nowrap">Сюда! 📍</button>
+                <button class="quick-chip bg-neutral-800 hover:bg-neutral-700 text-[10px] px-2 py-0.5 rounded border border-neutral-700 whitespace-nowrap">Опасно! ⚠️</button>
+                <button class="quick-chip bg-neutral-800 hover:bg-neutral-700 text-[10px] px-2 py-0.5 rounded border border-neutral-700 whitespace-nowrap">GG 🏆</button>
+            </div>
+
+            <!-- Chat Input Bar -->
+            <form id="chatForm" class="flex gap-1">
+                <input type="text" id="chatInput" placeholder="Сообщение..." maxlength="60" class="flex-1 bg-neutral-950 border border-neutral-700 text-neutral-100 px-2 py-1 rounded text-xs outline-none focus:border-amber-400">
+                <button type="submit" class="bg-amber-600 hover:bg-amber-500 text-black font-bold px-3 py-1 rounded text-xs transition">
+                    ➤
+                </button>
+            </form>
+        </div>
+
     </div>
-</div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
