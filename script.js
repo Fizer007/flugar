@@ -1,57 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-// --- ЗВУКОВОЙ ДВИЖОК ---
-class SoundEngine {
-    constructor() {
-        this.ctx = null;
-        this.muted = false;
-    }
-    init() {
-        if (!this.ctx) {
-            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (this.ctx.state === 'suspended') {
-            this.ctx.resume();
-        }
-    }
-    playShoot() {
-        if (this.muted || !this.ctx) return;
-        try {
-            const osc = this.ctx.createOscillator();
-            const gain = this.ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(320, this.ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(140, this.ctx.currentTime + 0.1);
-            gain.gain.setValueAtTime(0.07, this.ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.12);
-            osc.connect(gain);
-            gain.connect(this.ctx.destination);
-            osc.start();
-            osc.stop(this.ctx.currentTime + 0.12);
-        } catch (e) {}
-    }
-    playDoor() {
-        if (this.muted || !this.ctx) return;
-        try {
-            const osc = this.ctx.createOscillator();
-            const gain = this.ctx.createGain();
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(160, this.ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.2);
-            gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
-            osc.connect(gain);
-            gain.connect(this.ctx.destination);
-            osc.start();
-            osc.stop(this.ctx.currentTime + 0.2);
-        } catch (e) {}
-    }
-}
-
-const audio = new SoundEngine();
-
 // --- ДАННЫЕ ПЕРСОНАЖЕЙ И НАСТРОЙКИ ---
 const CHARACTERS = {
     isaac: { id: 'isaac', name: 'Isaac', skin: '#fbcfe8', speed: 220, avatar: '💧' },
@@ -79,11 +25,9 @@ let localPlayer = {
     ry: 0,
     x: ROOM_WIDTH / 2,
     y: ROOM_HEIGHT / 2,
-    radius: 18,
-    hp: 6
+    radius: 18
 };
 
-// Хранилище сгенерированных комнат и мух
 const roomCache = {}; 
 let projectiles = [];
 let keys = {};
@@ -91,29 +35,30 @@ let isGameRunning = false;
 let lastTime = performance.now();
 let visitedRooms = new Set(["0,0"]);
 
-// --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+// Уведомления
 function showToast(msg) {
     const toast = document.getElementById('toast');
-    document.getElementById('toastMsg').innerText = msg;
+    const toastMsg = document.getElementById('toastMsg');
+    if (!toast || !toastMsg) return;
+    toastMsg.innerText = msg;
     toast.classList.remove('opacity-0', 'pointer-events-none');
     toast.classList.add('opacity-100');
     setTimeout(() => toast.classList.add('opacity-0', 'pointer-events-none'), 2500);
 }
 
-// Псевдослучайный генератор для процедурной генерации комнат по координатам (rx, ry)
+// Псевдослучайная генерация для комнат
 function pseudoRandom(seed) {
     let x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
 }
 
-// Генерация / Получение комнаты
+// Генерация комнат и мух
 function getOrCreateRoom(rx, ry) {
     const key = `${rx},${ry}`;
     if (roomCache[key]) return roomCache[key];
 
-    // Генерируем мух на основе координат
     const seed = rx * 73856093 ^ ry * 19349663;
-    const flyCount = Math.floor(pseudoRandom(seed) * 5) + 2; // От 2 до 6 мух в комнате
+    const flyCount = Math.floor(pseudoRandom(seed) * 5) + 2; 
     const flies = [];
 
     for (let i = 0; i < flyCount; i++) {
@@ -124,31 +69,25 @@ function getOrCreateRoom(rx, ry) {
             vx: (pseudoRandom(seed + i * 4) - 0.5) * 100,
             vy: (pseudoRandom(seed + i * 5) - 0.5) * 100,
             radius: 10,
-            hp: 3,
-            maxHp: 3
+            hp: 3
         });
     }
 
-    // Выбор цвета пола
     const colors = ['#221b19', '#1a2228', '#2d140e', '#2a333d', '#140c10'];
     const colorIdx = Math.abs(rx * 31 + ry * 17) % colors.length;
 
-    roomCache[key] = {
-        rx, ry,
-        color: colors[colorIdx],
-        flies: flies
-    };
-
+    roomCache[key] = { rx, ry, color: colors[colorIdx], flies: flies };
     return roomCache[key];
 }
 
-// --- ВЫБОР ПЕРСОНАЖА В ЛОББИ ---
+// Выбор персонажа
 function buildCharacterSelector() {
     const grid = document.getElementById('charSelectorGrid');
+    if (!grid) return;
     grid.innerHTML = '';
     Object.values(CHARACTERS).forEach(char => {
         const card = document.createElement('div');
-        card.className = `char-card p-2.5 flex flex-col items-center justify-center gap-1 text-center ${localPlayer.character === char.id ? 'selected' : ''}`;
+        card.className = `char-card p-2.5 flex flex-col items-center justify-center gap-1 text-center cursor-pointer border rounded-xl bg-neutral-800 border-neutral-700 ${localPlayer.character === char.id ? 'border-amber-400 bg-amber-400/10' : ''}`;
         card.innerHTML = `
             <div class="w-10 h-10 rounded-full border-2 border-black flex items-center justify-center shadow text-lg" style="background-color: ${char.skin}">
                 <span>${char.avatar}</span>
@@ -156,18 +95,17 @@ function buildCharacterSelector() {
             <span class="text-xs font-bold text-neutral-200 leading-tight">${char.name}</span>
         `;
         card.addEventListener('click', () => {
-            document.querySelectorAll('.char-card').forEach(c => c.classList.remove('selected'));
-            card.classList.add('selected');
+            document.querySelectorAll('.char-card').forEach(c => c.classList.remove('border-amber-400', 'bg-amber-400/10'));
+            card.classList.add('border-amber-400', 'bg-amber-400/10');
             localPlayer.character = char.id;
             localPlayer.speed = char.speed;
-            document.getElementById('selectedCharTitle').innerText = char.name;
         });
         grid.appendChild(card);
     });
 }
 buildCharacterSelector();
 
-// --- УПРАВЛЕНИЕ И ВВОД ---
+// Управление
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
@@ -175,25 +113,6 @@ window.addEventListener('keydown', e => {
     }
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
-
-// Экранные кнопки для мобильных
-const dpadMap = { btnUp: 'KeyW', btnDown: 'KeyS', btnLeft: 'KeyA', btnRight: 'KeyD' };
-Object.entries(dpadMap).forEach(([btnId, code]) => {
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[code] = true; });
-    btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[code] = false; });
-    btn.addEventListener('mousedown', () => keys[code] = true);
-    btn.addEventListener('mouseup', () => keys[code] = false);
-});
-
-const shootMap = { btnShootUp: 'ArrowUp', btnShootDown: 'ArrowDown', btnShootLeft: 'ArrowLeft', btnShootRight: 'ArrowRight' };
-Object.entries(shootMap).forEach(([btnId, code]) => {
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    btn.addEventListener('touchstart', (e) => { e.preventDefault(); shootTear(code); });
-    btn.addEventListener('click', () => shootTear(code));
-});
 
 function shootTear(dirCode) {
     if (!isGameRunning) return;
@@ -213,19 +132,19 @@ function shootTear(dirCode) {
             radius: 6,
             life: 1.2
         });
-        audio.playShoot();
     }
 }
 
-// --- СТАРТ И ВЫХОД ИЗ ИГРЫ ---
+// Запуск игры
 const screenLobby = document.getElementById('screenLobby');
 const screenGame = document.getElementById('screenGame');
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 function startGame() {
-    audio.init();
-    localPlayer.name = document.getElementById('inputName').value || 'Isaac';
+    const inputName = document.getElementById('inputName');
+    if (inputName && inputName.value) localPlayer.name = inputName.value;
+
     screenLobby.classList.add('hidden');
     screenGame.classList.remove('hidden');
     screenGame.classList.add('flex');
@@ -237,12 +156,13 @@ function startGame() {
     showToast(`Добро пожаловать, ${localPlayer.name}!`);
 }
 
-document.getElementById('btnPlaySolo').addEventListener('click', () => {
+document.getElementById('btnPlaySolo')?.addEventListener('click', () => {
     document.getElementById('uiRoomCode').innerText = "SOLO";
+    document.getElementById('uiPlayerName').innerText = localPlayer.name;
     startGame();
 });
 
-document.getElementById('btnLeaveGame').addEventListener('click', () => {
+document.getElementById('btnLeaveGame')?.addEventListener('click', () => {
     isGameRunning = false;
     screenGame.classList.add('hidden');
     screenGame.classList.remove('flex');
@@ -250,12 +170,13 @@ document.getElementById('btnLeaveGame').addEventListener('click', () => {
 });
 
 function resizeCanvas() {
-    canvas.width = canvas.parentElement.clientWidth;
-    canvas.height = canvas.parentElement.clientHeight;
+    if (!canvas || !canvas.parentElement) return;
+    canvas.width = canvas.parentElement.clientWidth * 0.9;
+    canvas.height = canvas.parentElement.clientHeight * 0.85;
 }
 window.addEventListener('resize', resizeCanvas);
 
-// --- ГЛАВНЫЙ ИГРОВОЙ ЦИКЛ ---
+// Главный цикл
 function gameLoop(now) {
     if (!isGameRunning) return;
     const dt = Math.min((now - lastTime) / 1000, 0.1);
@@ -267,9 +188,8 @@ function gameLoop(now) {
     requestAnimationFrame(gameLoop);
 }
 
-// ОБНОВЛЕНИЕ ЛОГИКИ
 function update(dt) {
-    // 1. Движение игрока
+    // Движение
     let moveX = 0, moveY = 0;
     if (keys['KeyW']) moveY -= 1;
     if (keys['KeyS']) moveY += 1;
@@ -284,73 +204,63 @@ function update(dt) {
     localPlayer.x += moveX * localPlayer.speed * dt;
     localPlayer.y += moveY * localPlayer.speed * dt;
 
-    // 2. Двери и Переход между комнатами (Бесконечная генерация)
+    // Переходы через двери
     const doorMinX = ROOM_WIDTH / 2 - DOOR_SIZE / 2;
     const doorMaxX = ROOM_WIDTH / 2 + DOOR_SIZE / 2;
     const doorMinY = ROOM_HEIGHT / 2 - DOOR_SIZE / 2;
     const doorMaxY = ROOM_HEIGHT / 2 + DOOR_SIZE / 2;
 
-    // Верхняя дверь
     if (localPlayer.y - localPlayer.radius < WALL) {
         if (localPlayer.x > doorMinX && localPlayer.x < doorMaxX) {
             localPlayer.ry -= 1;
             localPlayer.y = ROOM_HEIGHT - WALL - localPlayer.radius - 10;
-            audio.playDoor();
         } else {
             localPlayer.y = WALL + localPlayer.radius;
         }
     }
-    // Нижняя дверь
     if (localPlayer.y + localPlayer.radius > ROOM_HEIGHT - WALL) {
         if (localPlayer.x > doorMinX && localPlayer.x < doorMaxX) {
             localPlayer.ry += 1;
             localPlayer.y = WALL + localPlayer.radius + 10;
-            audio.playDoor();
         } else {
             localPlayer.y = ROOM_HEIGHT - WALL - localPlayer.radius;
         }
     }
-    // Левая дверь
     if (localPlayer.x - localPlayer.radius < WALL) {
         if (localPlayer.y > doorMinY && localPlayer.y < doorMaxY) {
             localPlayer.rx -= 1;
             localPlayer.x = ROOM_WIDTH - WALL - localPlayer.radius - 10;
-            audio.playDoor();
         } else {
             localPlayer.x = WALL + localPlayer.radius;
         }
     }
-    // Правая дверь
     if (localPlayer.x + localPlayer.radius > ROOM_WIDTH - WALL) {
         if (localPlayer.y > doorMinY && localPlayer.y < doorMaxY) {
             localPlayer.rx += 1;
             localPlayer.x = WALL + localPlayer.radius + 10;
-            audio.playDoor();
         } else {
             localPlayer.x = ROOM_WIDTH - WALL - localPlayer.radius;
         }
     }
 
     visitedRooms.add(`${localPlayer.rx},${localPlayer.ry}`);
-    document.getElementById('uiCoord').innerText = `(${localPlayer.rx}, ${localPlayer.ry})`;
+    const uiCoord = document.getElementById('uiCoord');
+    if (uiCoord) uiCoord.innerText = `(${localPlayer.rx}, ${localPlayer.ry})`;
 
-    // Получаем текущую комнату
     const room = getOrCreateRoom(localPlayer.rx, localPlayer.ry);
 
-    // 3. Обновление Мух (AI)
+    // Логика Мух
     room.flies.forEach(fly => {
-        // Движение в сторону игрока
         const dx = localPlayer.x - fly.x;
         const dy = localPlayer.y - fly.y;
         const dist = Math.hypot(dx, dy);
 
         if (dist > 0) {
-            fly.vx += (dx / dist) * 120 * dt;
-            fly.vy += (dy / dist) * 120 * dt;
+            fly.vx += (dx / dist) * 100 * dt;
+            fly.vy += (dy / dist) * 100 * dt;
         }
 
-        // Ограничение скорости
-        const maxSpeed = 90;
+        const maxSpeed = 80;
         const currentSpeed = Math.hypot(fly.vx, fly.vy);
         if (currentSpeed > maxSpeed) {
             fly.vx = (fly.vx / currentSpeed) * maxSpeed;
@@ -361,7 +271,7 @@ function update(dt) {
         fly.y += fly.vy * dt;
     });
 
-    // 4. Обновление Снарядов (Слёз) и Столкновения
+    // Выстрелы
     for (let i = projectiles.length - 1; i >= 0; i--) {
         const p = projectiles[i];
         p.x += p.vx * dt;
@@ -370,32 +280,26 @@ function update(dt) {
 
         let hit = false;
 
-        // Попадание по мухам
         for (let j = room.flies.length - 1; j >= 0; j--) {
             const fly = room.flies[j];
-            const dist = Math.hypot(p.x - fly.x, p.y - fly.y);
-            if (dist < p.radius + fly.radius) {
+            if (Math.hypot(p.x - fly.x, p.y - fly.y) < p.radius + fly.radius) {
                 fly.hp -= 1;
                 hit = true;
-                if (fly.hp <= 0) {
-                    room.flies.splice(j, 1);
-                }
+                if (fly.hp <= 0) room.flies.splice(j, 1);
                 break;
             }
         }
 
-        // Вылет за пределы стены
         if (p.x < WALL || p.x > ROOM_WIDTH - WALL || p.y < WALL || p.y > ROOM_HEIGHT - WALL || p.life <= 0 || hit) {
             projectiles.splice(i, 1);
         }
     }
 }
 
-// ОТРИСОВКА
 function render() {
+    if (!ctx) return;
     const room = getOrCreateRoom(localPlayer.rx, localPlayer.ry);
 
-    // Масштабирование Canvas под пропорции комнаты 800x500
     const scale = Math.min(canvas.width / ROOM_WIDTH, canvas.height / ROOM_HEIGHT);
     const offsetX = (canvas.width - ROOM_WIDTH * scale) / 2;
     const offsetY = (canvas.height - ROOM_HEIGHT * scale) / 2;
@@ -406,7 +310,7 @@ function render() {
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
 
-    // Пол комнаты
+    // Пол
     ctx.fillStyle = room.color;
     ctx.fillRect(0, 0, ROOM_WIDTH, ROOM_HEIGHT);
 
@@ -419,16 +323,12 @@ function render() {
 
     // Двери
     ctx.fillStyle = '#facc15';
-    // Верхняя
     ctx.fillRect(ROOM_WIDTH / 2 - DOOR_SIZE / 2, 0, DOOR_SIZE, WALL / 2);
-    // Нижняя
     ctx.fillRect(ROOM_WIDTH / 2 - DOOR_SIZE / 2, ROOM_HEIGHT - WALL / 2, DOOR_SIZE, WALL / 2);
-    // Левая
     ctx.fillRect(0, ROOM_HEIGHT / 2 - DOOR_SIZE / 2, WALL / 2, DOOR_SIZE);
-    // Правая
     ctx.fillRect(ROOM_WIDTH - WALL / 2, ROOM_HEIGHT / 2 - DOOR_SIZE / 2, WALL / 2, DOOR_SIZE);
 
-    // 1. Отрисовка Мух
+    // Отрисовка мух
     room.flies.forEach(fly => {
         ctx.fillStyle = '#334155';
         ctx.beginPath();
@@ -438,15 +338,14 @@ function render() {
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Крылышки
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
         ctx.beginPath();
-        ctx.arc(fly.x - 6, fly.y - 6, 5, 0, Math.PI * 2);
-        ctx.arc(fly.x + 6, fly.y - 6, 5, 0, Math.PI * 2);
+        ctx.arc(fly.x - 5, fly.y - 5, 4, 0, Math.PI * 2);
+        ctx.arc(fly.x + 5, fly.y - 5, 4, 0, Math.PI * 2);
         ctx.fill();
     });
 
-    // 2. Отрисовка Снарядов
+    // Снаряды
     ctx.fillStyle = '#60a5fa';
     projectiles.forEach(p => {
         ctx.beginPath();
@@ -454,24 +353,22 @@ function render() {
         ctx.fill();
     });
 
-    // 3. Отрисовка Игрока
+    // Игрок
     const charData = CHARACTERS[localPlayer.character] || CHARACTERS.isaac;
     ctx.fillStyle = charData.skin;
     ctx.beginPath();
     ctx.arc(localPlayer.x, localPlayer.y, localPlayer.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Глаза
     ctx.fillStyle = '#000000';
     ctx.beginPath();
     ctx.arc(localPlayer.x - 5, localPlayer.y - 3, 3, 0, Math.PI * 2);
     ctx.arc(localPlayer.x + 5, localPlayer.y - 3, 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Никнейм
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
@@ -482,13 +379,13 @@ function render() {
     renderMinimap();
 }
 
-// Отрисовка миникарты
 function renderMinimap() {
     const mCanvas = document.getElementById('minimapCanvas');
+    if (!mCanvas) return;
     const mCtx = mCanvas.getContext('2d');
     mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
 
-    const size = 12;
+    const size = 10;
     const cx = mCanvas.width / 2;
     const cy = mCanvas.height / 2;
 
@@ -497,11 +394,7 @@ function renderMinimap() {
         const x = cx + (rx - localPlayer.rx) * (size + 3) - size / 2;
         const y = cy + (ry - localPlayer.ry) * (size + 3) - size / 2;
 
-        if (rx === localPlayer.rx && ry === localPlayer.ry) {
-            mCtx.fillStyle = '#facc15';
-        } else {
-            mCtx.fillStyle = '#4b5b6d';
-        }
+        mCtx.fillStyle = (rx === localPlayer.rx && ry === localPlayer.ry) ? '#facc15' : '#4b5b6d';
         mCtx.fillRect(x, y, size, size);
     });
 }
