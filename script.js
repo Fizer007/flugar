@@ -253,13 +253,17 @@
             currentRoomId = clean;
             isRoomHost = true;
             saveRoom(clean);
-            startScreenGame(clean);
+            if (!auto) startScreenGame(clean);
 
             peer = new Peer(clean, { debug: 0 });
             peer.on('open', id => {
                 myPlayerId = id;
                 peerReady = true;
                 roomJoinBusy = false;
+                if (auto) {
+                    const btn = document.getElementById('btnCreateRoom');
+                    if (btn) btn.innerHTML = '<span>🎮</span> Начать Онлайн Игру';
+                }
                 showToast(`Комната ${clean} создана`);
                 playerHeartbeat = setInterval(() => broadcast(localPlayerPacket()), 80);
             });
@@ -280,7 +284,7 @@
             currentRoomId = clean;
             isRoomHost = false;
             saveRoom(clean);
-            startScreenGame(clean);
+            if (!auto) startScreenGame(clean);
 
             peer = new Peer(undefined, { debug: 0 });
             peer.on('open', id => {
@@ -290,6 +294,10 @@
                 hostConnection.on('open', () => {
                     peerReady = true;
                     roomJoinBusy = false;
+                    if (auto) {
+                        const btn = document.getElementById('btnJoinRoom');
+                        if (btn) btn.textContent = 'Начать игру';
+                    }
                     showToast(auto ? `Комната ${clean} загружена` : `Подключено к ${clean}`);
                     playerHeartbeat = setInterval(() => sendToConnection(hostConnection, localPlayerPacket()), 80);
                 });
@@ -351,25 +359,8 @@
             document.getElementById('inputRoomId').value = roomId || '';
             localPlayer.name = document.getElementById('inputName').value.trim() || 'Isaac_Hero';
             if (fromUrl) await joinNetworkRoom(fromUrl, true);
-            else if (!saved) await createNetworkRoom(generateRoomCode(), true);
+            else await createNetworkRoom(generateRoomCode(), true);
         }
-
-        function setupItemMenu() {
-            const toggle=document.getElementById('btnToggleItems');
-            const menu=document.getElementById('itemMenu');
-            const all=document.getElementById('btnHideAllItems');
-            if(toggle) toggle.addEventListener('click',()=>menu.classList.toggle('hidden'));
-            if(all) all.addEventListener('click',()=>{ allItemsHudHidden=!allItemsHudHidden; all.textContent=allItemsHudHidden?'Показать HUD':'Скрыть HUD'; renderItemHud(); });
-            document.querySelectorAll('[data-stat]').forEach(btn=>btn.addEventListener('click',()=>{ const id=btn.dataset.stat; if(itemHudHidden.has(id)) itemHudHidden.delete(id); else itemHudHidden.add(id); renderItemHud(); }));
-            renderItemHud();
-        }
-        setupItemMenu();
-
-        // Загружаем PeerJS и автоматически создаём комнату при первом входе.
-        autoJoinRoom().catch(err => {
-            console.error(err);
-            showToast(err.message || 'Ошибка запуска онлайн');
-        });
 
         function showToast(msg) {
             const toast = document.getElementById('toast');
@@ -623,7 +614,12 @@
         document.getElementById('btnCreateRoom').addEventListener('click', async () => {
             audio.init();
             localPlayer.name = document.getElementById('inputName').value.trim() || 'Isaac_Hero';
-            await createNetworkRoom(generateRoomCode());
+            const roomId = normalizeRoomId(document.getElementById('inputRoomId').value);
+            if (isRoomHost && currentRoomId && roomId === currentRoomId && peerReady) {
+                startScreenGame(currentRoomId);
+                return;
+            }
+            await createNetworkRoom(roomId || generateRoomCode());
         });
 
         document.getElementById('btnJoinRoom').addEventListener('click', async () => {
@@ -631,6 +627,10 @@
             localPlayer.name = document.getElementById('inputName').value.trim() || 'Isaac_Hero';
             const roomId = normalizeRoomId(document.getElementById('inputRoomId').value);
             if (!roomId) return showToast('Введите код комнаты!');
+            if (currentRoomId === roomId && peerReady && !isRoomHost) {
+                startScreenGame(currentRoomId);
+                return;
+            }
             await joinNetworkRoom(roomId);
         });
 
@@ -951,6 +951,31 @@
             inv.textContent=`🪙 ${inventory.coins}  🔑 ${inventory.keys}  💣 ${inventory.bombs}`;
             list.appendChild(inv);
         }
+
+        function setupItemMenu() {
+            const toggle = document.getElementById('btnToggleItems');
+            const menu = document.getElementById('itemMenu');
+            const all = document.getElementById('btnHideAllItems');
+            if (toggle) toggle.addEventListener('click', () => menu.classList.toggle('hidden'));
+            if (all) all.addEventListener('click', () => {
+                allItemsHudHidden = !allItemsHudHidden;
+                all.textContent = allItemsHudHidden ? 'Показать HUD' : 'Скрыть HUD';
+                renderItemHud();
+            });
+            document.querySelectorAll('[data-stat]').forEach(btn => btn.addEventListener('click', () => {
+                const id = btn.dataset.stat;
+                if (itemHudHidden.has(id)) itemHudHidden.delete(id);
+                else itemHudHidden.add(id);
+                renderItemHud();
+            }));
+            renderItemHud();
+        }
+
+        // PeerJS запускаем только после инициализации localPlayer и HUD.
+        autoJoinRoom().catch(err => {
+            console.error(err);
+            showToast(err.message || 'Ошибка запуска онлайн');
+        });
 
         function renderItemDescription() {
             const box=document.getElementById('itemDescription');
