@@ -94,6 +94,21 @@
                 } catch(e) {}
             }
 
+            playBomb() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(110, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(42, this.ctx.currentTime + 0.45);
+                    gain.gain.setValueAtTime(0.16, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.45);
+                    osc.connect(gain); gain.connect(this.ctx.destination);
+                    osc.start(); osc.stop(this.ctx.currentTime + 0.45);
+                } catch(e) {}
+            }
+
             playChat() {
                 if (this.muted || !this.ctx) return;
                 try {
@@ -132,6 +147,8 @@
         let allItemsHudHidden = false;
         let dummyDamageTotal = 0;
         let dummyDamageEvents = [];
+        let activeBombs = [];
+        const explodedBombIds = new Set();
 
 
         function loadPeerJS() {
@@ -200,7 +217,29 @@
                 (packet.taken || []).forEach(k => takenItems.add(k));
                 renderItemHud();
             } else if (packet.type === 'dummy_hit') {
-                registerDummyHit(packet.damage || 0, packet.x, packet.y, packet.ownerName || 'Player');
+                const sameRoom = packet.rx === localPlayer.rx && packet.ry === localPlayer.ry;
+                if (sameRoom) registerDummyHit(packet.damage || 0, packet.x, packet.y, packet.ownerName || 'Player');
+                // Never relay dummy damage into other rooms.
+                if (isRoomHost && sameRoom) {
+                    peerConnections.forEach((conn, id) => {
+                        if (id === senderId) return;
+                        const rp = remotePlayers[id];
+                        if (rp && rp.rx === packet.rx && rp.ry === packet.ry) sendToConnection(conn, packet);
+                    });
+                }
+            } else if (packet.type === 'bomb') {
+                if (packet.bomb && packet.bomb.rx === localPlayer.rx && packet.bomb.ry === localPlayer.ry) {
+                    if (!activeBombs.some(b => b.id === packet.bomb.id)) activeBombs.push({...packet.bomb, remote:true});
+                }
+                if (isRoomHost) broadcast(packet, senderId);
+            } else if (packet.type === 'bomb_explode') {
+                const b = packet.bomb || packet;
+                if (explodedBombIds.has(b.id)) return;
+                explodedBombIds.add(b.id);
+                if (b.rx === localPlayer.rx && b.ry === localPlayer.ry) {
+                    activeBombs = activeBombs.filter(x => x.id !== b.id);
+                    audio.playBomb();
+                }
                 if (isRoomHost) broadcast(packet, senderId);
             } else if (packet.type === 'chat') {
                 if (packet.message) {
@@ -401,21 +440,36 @@
             devil: { name: 'Devil Room', floor: '#1a0505', grid: '#100202', wall: '#3d0a0a', border: '#dc2626', obstacleRock: '#6b1111', label: '😈 Комната Дьявола' }
         };
 
-        // Infinite deterministic room tree: corridors + branches + dead ends.
+        // Infinite deterministic room graph: a guaranteed branching tree + occasional side links.
+        function roomHash(rx, ry) {
+            const n = Math.sin(rx * 127.1 + ry * 311.7) * 43758.5453;
+            return Math.abs(n - Math.floor(n));
+        }
         function roomParent(rx, ry) {
             if (rx === 0 && ry === 0) return null;
-            const ax = Math.abs(rx), ay = Math.abs(ry);
-            if (ax > ay) return { rx: rx - Math.sign(rx), ry };
-            if (ay > ax) return { rx, ry: ry - Math.sign(ry) };
-            const h = Math.abs(Math.sin(rx * 43.17 + ry * 91.73) * 100000);
-            return (h % 2 < 1) ? { rx: rx - Math.sign(rx), ry } : { rx, ry: ry - Math.sign(ry) };
+            if (rx === 0) return { rx: 0, ry: ry - Math.sign(ry) };
+            if (ry === 0) return { rx: rx - Math.sign(rx), ry: 0 };
+            const h = roomHash(rx, ry);
+            return h < 0.5
+                ? { rx: rx - Math.sign(rx), ry }
+                : { rx, ry: ry - Math.sign(ry) };
+        }
+        function edgeHash(rx1, ry1, rx2, ry2) {
+            const a = `${rx1},${ry1}`, b = `${rx2},${ry2}`;
+            const first = a < b ? a : b, second = a < b ? b : a;
+            let h = 2166136261;
+            for (const ch of first + '|' + second) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+            return (h >>> 0) / 4294967296;
         }
         function hasRoomDoor(rx, ry, dir) {
             const nx = rx + dir.x, ny = ry + dir.y;
             const np = roomParent(nx, ny);
             if (np && np.rx === rx && np.ry === ry) return true;
             const p = roomParent(rx, ry);
-            return !!(p && p.rx === nx && p.ry === ny);
+            if (p && p.rx === nx && p.ry === ny) return true;
+            // Extra side links create real forks/loops without a finite map.
+            if (edgeHash(rx, ry, nx, ny) < 0.14) return true;
+            return false;
         }
         const ROOM_DIRS = {
             up:{x:0,y:1}, down:{x:0,y:-1}, left:{x:-1,y:0}, right:{x:1,y:0}
@@ -731,6 +785,7 @@
             localPlayer.y = ROOM_HEIGHT / 2;
             visitedRooms = new Set(["0,0"]);
             projectiles = [];
+            activeBombs = [];
             renderItemHud();
 
             document.getElementById('screenLobby').classList.add('hidden');
@@ -767,6 +822,7 @@
             if (k === 'ArrowDown') { keys.arrowDown = true; e.preventDefault(); }
             if (k === 'ArrowLeft') { keys.arrowLeft = true; e.preventDefault(); }
             if (k === 'ArrowRight') { keys.arrowRight = true; e.preventDefault(); }
+            if (k === 'e' || k === 'E') { e.preventDefault(); placeBomb(); }
         });
 
         window.addEventListener('keyup', (e) => {
@@ -986,6 +1042,8 @@
             const inv=document.createElement('div'); inv.className='item-inventory';
             inv.textContent=`🪙 ${inventory.coins}  🔑 ${inventory.keys}  💣 ${inventory.bombs}`;
             list.appendChild(inv);
+            const bombCount = document.getElementById('uiBombCount');
+            if (bombCount) bombCount.textContent = inventory.bombs;
         }
 
         function setupItemMenu() {
@@ -1006,6 +1064,8 @@
             }));
             renderItemHud();
         }
+
+        document.getElementById('btnBomb')?.addEventListener('click', () => { audio.init(); placeBomb(); });
 
         // PeerJS запускаем только после инициализации localPlayer и HUD.
         autoJoinRoom().catch(err => {
@@ -1107,9 +1167,40 @@
             if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection,packet);
         }
 
+        function placeBomb() {
+            if (inventory.bombs <= 0) { showToast('Нет бомб'); return; }
+            inventory.bombs--;
+            renderItemHud();
+            audio.init();
+            const id = myPlayerId + '_b_' + Math.random().toString(36).slice(2,9);
+            const bomb = { id, ownerId: myPlayerId, ownerName: localPlayer.name, rx: localPlayer.rx, ry: localPlayer.ry, x: localPlayer.x, y: localPlayer.y, explodeAt: Date.now() + 2200, damage: Math.max(3, localPlayer.stats.damage * 2.2) };
+            activeBombs.push(bomb);
+            const packet = { type:'bomb', bomb };
+            if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection, packet);
+        }
+
+        function explodeBomb(bomb) {
+            if (explodedBombIds.has(bomb.id)) return;
+            explodedBombIds.add(bomb.id);
+            activeBombs = activeBombs.filter(b => b.id !== bomb.id);
+            audio.playBomb();
+            const packet = { type:'bomb_explode', bomb:{id:bomb.id, rx:bomb.rx, ry:bomb.ry, x:bomb.x, y:bomb.y} };
+            if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection, packet);
+            if (bomb.rx === localPlayer.rx && bomb.ry === localPlayer.ry && isKeeperRoom(localPlayer.rx, localPlayer.ry)) {
+                const d = Math.hypot(400 - bomb.x, 320 - bomb.y);
+                if (d < 135) {
+                    const hit = {type:'dummy_hit', damage:bomb.damage, x:400, y:290, ownerName:bomb.ownerName, rx:bomb.rx, ry:bomb.ry};
+                    if (isRoomHost) {
+                        registerDummyHit(bomb.damage, 400, 290, bomb.ownerName);
+                        peerConnections.forEach((conn,id)=>{ const rp=remotePlayers[id]; if(rp && rp.rx===bomb.rx && rp.ry===bomb.ry) sendToConnection(conn,hit); });
+                    } else sendToConnection(hostConnection, hit);
+                }
+            }
+        }
+
         function shootProjectile(dirX, dirY) {
             const now = performance.now();
-            const fireDelay = Math.max(85, (activeCheats.has('MADNESS') ? 70 : 200) / localPlayer.stats.tears);
+            const fireDelay = Math.max(150, (activeCheats.has('MADNESS') ? 240 : 400) / Math.max(1, localPlayer.stats.tears));
             if (now - localPlayer.lastShootTime < fireDelay) return;
             localPlayer.lastShootTime = now;
             const charInfo = CHARACTERS[localPlayer.character] || CHARACTERS.isaac;
@@ -1127,10 +1218,17 @@
 
             updatePlayer(dt);
             updateProjectiles(dt);
+            updateBombs();
             renderGame();
             renderMinimap();
 
             requestAnimationFrame(gameLoop);
+        }
+
+        function updateBombs() {
+            const now = Date.now();
+            const due = activeBombs.filter(b => !b.remote && now >= b.explodeAt);
+            due.forEach(explodeBomb);
         }
 
         function updateProjectiles(dt) {
@@ -1140,7 +1238,7 @@
                 if (isKeeperRoom(localPlayer.rx,localPlayer.ry) && p.x>345 && p.x<455 && p.y>255 && p.y<355) {
                     const damage = Number(p.damage || localPlayer.stats.damage);
                     registerDummyHit(damage,p.x,p.y,p.ownerName);
-                    const packet={type:'dummy_hit',damage,x:p.x,y:p.y,ownerName:p.ownerName};
+                    const packet={type:'dummy_hit',damage,x:p.x,y:p.y,ownerName:p.ownerName,rx:p.rx,ry:p.ry};
                     if(!p.remote){ if(isRoomHost) broadcast(packet); else sendToConnection(hostConnection,packet); }
                     projectiles.splice(i,1); continue;
                 }
@@ -1255,6 +1353,7 @@
         function onRoomChange() {
             audio.playDoor();
             projectiles = [];
+            activeBombs = [];
             const coordKey = `${localPlayer.rx},${localPlayer.ry}`;
             visitedRooms.add(coordKey);
             document.getElementById('uiCoord').innerText = `(${localPlayer.rx}, ${localPlayer.ry})`;
@@ -1382,6 +1481,18 @@
             });
 
             if (isKeeperRoom(localPlayer.rx, localPlayer.ry)) drawKeeperRoom();
+
+            activeBombs.forEach(b => {
+                if (b.rx !== localPlayer.rx || b.ry !== localPlayer.ry) return;
+                const pulse = 1 + Math.sin(performance.now()/90) * 0.08;
+                ctx.save();
+                ctx.translate(b.x, b.y); ctx.scale(pulse,pulse);
+                ctx.fillStyle='#111'; ctx.strokeStyle='#000'; ctx.lineWidth=3;
+                ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                ctx.fillStyle='#d6d3d1'; ctx.fillRect(-3,-20,6,7);
+                ctx.fillStyle='#facc15'; ctx.beginPath(); ctx.arc(0,-22,4,0,Math.PI*2); ctx.fill();
+                ctx.restore();
+            });
 
             projectiles.forEach(p => {
                 ctx.save();
