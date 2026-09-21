@@ -217,6 +217,10 @@
                 if(packet.roomKey && Array.isArray(packet.items)) goldenRoomOverrides.set(packet.roomKey, packet.items);
                 if(isRoomHost) broadcast(packet, senderId);
                 renderItemHud();
+            } else if (packet.type === 'beggar_trade') {
+                if (packet.roomKey) beggarTrades.add(packet.roomKey);
+                if (isRoomHost) broadcast(packet, senderId);
+                renderItemHud();
             } else if (packet.type === 'item_state') {
                 (packet.taken || []).forEach(k => takenItems.add(k));
                 renderItemHud();
@@ -282,9 +286,9 @@
         }
 
         function updatePlayerCount() {
-            const sameRoomCount = Object.values(remotePlayers)
-                .filter(p => p.rx === localPlayer.rx && p.ry === localPlayer.ry).length;
-            document.getElementById('uiPlayerCount').innerText = String(sameRoomCount + 1);
+            // Показываем всех игроков в сетевой комнате, а не только в текущей комнате карты.
+            const count = Object.keys(remotePlayers).length + 1;
+            document.getElementById('uiPlayerCount').innerText = String(count);
         }
 
         async function createNetworkRoom(roomId, auto = false) {
@@ -684,6 +688,7 @@
             localPlayer.stats = { damage:3.5, tears:2.5, speed:1, range:1, shotSpeed:1, luck:0 };
             d6Charges = 6;
             goldenRoomOverrides.clear();
+            beggarTrades.clear();
             renderActiveButton();
             renderItemHud();
             renderChatMessages();
@@ -721,8 +726,14 @@
             await joinNetworkRoom(roomId);
         });
 
+        function locationChatText() {
+            const theme = getRoomTheme(localPlayer.rx, localPlayer.ry);
+            const special = isGoldenRoom(localPlayer.rx, localPlayer.ry) ? ' • золотая комната' : (isBeggarRoom(localPlayer.rx, localPlayer.ry) ? ' • попрошайка' : '');
+            return `Я здесь! 📍 ${theme.label}${special} (${localPlayer.rx}, ${localPlayer.ry})`;
+        }
+
         async function addChatMessage(sender, text, type = 'user') {
-            const cleanText = String(text || '').trim().slice(0, 60);
+            const cleanText = String(text || '').trim().slice(0, 100);
             if (!cleanText) return;
             const message = {
                 id: Math.random().toString(36).slice(2),
@@ -784,7 +795,8 @@
 
         document.querySelectorAll('.quick-chip').forEach(btn => {
             btn.addEventListener('click', () => {
-                addChatMessage(localPlayer.name, btn.innerText, 'user');
+                const text = btn.innerText.startsWith('Я здесь') ? locationChatText() : btn.innerText;
+                addChatMessage(localPlayer.name, text, 'user');
                 audio.playChat();
             });
         });
@@ -833,7 +845,7 @@
             if (k === 'ArrowDown') { keys.arrowDown = true; e.preventDefault(); }
             if (k === 'ArrowLeft') { keys.arrowLeft = true; e.preventDefault(); }
             if (k === 'ArrowRight') { keys.arrowRight = true; e.preventDefault(); }
-            if (k === 'e' || k === 'E') { e.preventDefault(); placeBomb(); }
+            if (k === 'e' || k === 'E') { e.preventDefault(); if (isBeggarRoom(localPlayer.rx, localPlayer.ry)) tradeWithBeggar(); else placeBomb(); }
             if (k === ' ') { e.preventDefault(); useD6(); }
         });
 
@@ -963,6 +975,13 @@
             return coordHash(rx + 9, ry - 4) > 0.91;
         }
 
+        function isBeggarRoom(rx, ry) {
+            if (isGoldenRoom(rx, ry) || isKeeperRoom(rx, ry) || (rx === 0 && ry === 0)) return false;
+            return coordHash(rx - 14, ry + 23) > 0.925;
+        }
+
+        const beggarTrades = new Set();
+
         function getGoldenItems(rx, ry) {
             const h = Math.floor(coordHash(rx, ry) * 1000000);
             const count = 2 + (h % 2);
@@ -1012,10 +1031,11 @@
             const current=goldenRoomItems();
             const rerolled=current.map((old,i)=> {
                 if(itemTaken(key,old.itemId)) return old;
+                // D6 не трогает пикапы: только настоящий предмет получает новый предмет.
+                if (old.type !== 'item') return old;
                 const h=Math.floor(coordHash(localPlayer.rx*17+i+3, localPlayer.ry*29-i-5)*1000000);
-                const isPickup=((h>>2)%100)<28;
-                if(isPickup){ const pick=PICKUP_POOL[(h+i*13)%PICKUP_POOL.length]; return {itemId:old.itemId,type:'pickup',...pick,x:old.x,y:old.y}; }
-                const item=ITEM_POOL[(h+i*17)%ITEM_POOL.length]; return {itemId:old.itemId,type:'item',...item,x:old.x,y:old.y};
+                const item=ITEM_POOL[(h+i*17)%ITEM_POOL.length];
+                return {itemId:old.itemId,type:'item',...item,x:old.x,y:old.y};
             });
             goldenRoomOverrides.set(key,rerolled);
             d6Charges=0;
@@ -1191,8 +1211,75 @@
             ctx.restore();
         }
 
+        function beggarTradeKey() { return roomKey(); }
+
+        function tradeWithBeggar() {
+            if (!isBeggarRoom(localPlayer.rx, localPlayer.ry)) return;
+            if (beggarTrades.has(beggarTradeKey())) { showToast('Попрошайка уже ушёл'); return; }
+            if (inventory.coins <= 0) { showToast('Попрошайка: нужна монетка'); return; }
+            inventory.coins--;
+            // Без случайной азартной механики: результат зависит от координат комнаты.
+            const h = Math.floor(coordHash(localPlayer.rx * 31 + 5, localPlayer.ry * 17 - 2) * 1000);
+            if (h % 3 === 0) {
+                const item = {itemId:'beggar_speed', type:'item', ...ITEM_POOL.find(x=>x.id==='growth_hormones')};
+                applyItem(item);
+                showToast('⚡ Попрошайка дал предмет на скорость и ушёл');
+            } else {
+                const kind = PICKUP_POOL[(h + 1) % PICKUP_POOL.length];
+                applyItem({itemId:'beggar_pickup', type:'pickup', ...kind});
+                showToast(`🎁 Попрошайка дал ${kind.name} и ушёл`);
+            }
+            beggarTrades.add(beggarTradeKey());
+            renderItemHud();
+            const packet={type:'beggar_trade',roomKey:beggarTradeKey()};
+            if(isRoomHost) broadcast(packet); else sendToConnection(hostConnection,packet);
+        }
+
+        function drawBeggarRoom() {
+            const x=400,y=315;
+            ctx.save();
+            ctx.fillStyle='#241b10'; ctx.fillRect(120,120,560,270);
+            ctx.strokeStyle='#8b5e34'; ctx.lineWidth=4; ctx.strokeRect(120,120,560,270);
+            ctx.fillStyle='#c9a66b'; ctx.beginPath(); ctx.arc(x,y-15,25,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='#111'; ctx.beginPath(); ctx.arc(x-8,y-18,3,0,Math.PI*2); ctx.arc(x+8,y-18,3,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='#7c2d12'; ctx.fillRect(x-35,y+10,70,55);
+            ctx.fillStyle='#facc15'; ctx.font='bold 13px monospace'; ctx.textAlign='center'; ctx.fillText('ПОПРОШАЙКА',x,y-60);
+            ctx.fillStyle='#fde68a'; ctx.font='11px monospace'; ctx.fillText('1 🪙 → подарок',x,y+88);
+            if (beggarTrades.has(beggarTradeKey())) { ctx.fillStyle='#9ca3af'; ctx.fillText('УШЁЛ',x,y+108); }
+            ctx.restore();
+        }
+
+        function getRoomCoin(rx, ry) {
+            if (rx === 0 && ry === 0 || isGoldenRoom(rx,ry) || isKeeperRoom(rx,ry) || isBeggarRoom(rx,ry)) return null;
+            // Один шанс спавна на вход: максимум одна монетка в комнате.
+            const h = coordHash(rx * 19 + 7, ry * 43 - 11);
+            if (h > 0.22) return null;
+            const posHash = Math.floor(coordHash(rx * 53 - 3, ry * 29 + 8) * 4);
+            const positions=[{x:130,y:120},{x:670,y:120},{x:130,y:380},{x:670,y:380}];
+            return {itemId:'room_coin', type:'pickup', id:'coin', name:'Монетка', icon:'🪙', desc:'+1 монета', kind:'coin', ...positions[posHash]};
+        }
+
+        function collectRoomCoin() {
+            const coin=getRoomCoin(localPlayer.rx,localPlayer.ry);
+            if(!coin || itemTaken(roomKey(),coin.itemId)) return;
+            if(Math.hypot(localPlayer.x-coin.x,localPlayer.y-coin.y)<42){
+                takenItems.add(`${roomKey()}:${coin.itemId}`);
+                applyItem(coin);
+                const packet={type:'item_taken',roomKey:roomKey(),itemId:coin.itemId};
+                if(isRoomHost) broadcast(packet); else sendToConnection(hostConnection,packet);
+                renderItemHud();
+            }
+        }
+
+        function drawRoomCoin() {
+            const coin=getRoomCoin(localPlayer.rx,localPlayer.ry);
+            if(!coin || itemTaken(roomKey(),coin.itemId)) return;
+            ctx.save(); ctx.font='30px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🪙',coin.x,coin.y);
+            ctx.font='bold 9px monospace'; ctx.fillStyle='#fde68a'; ctx.fillText('МОНЕТА',coin.x,coin.y+25); ctx.restore();
+        }
+
         function getRoomObstacles(rx, ry) {
-            if (isGoldenRoom(rx, ry) || isKeeperRoom(rx, ry)) return [];
+            if (isGoldenRoom(rx, ry) || isKeeperRoom(rx, ry) || isBeggarRoom(rx, ry)) return [];
             if (rx === 0 && ry === 0) return TEMPLATES[0];
             const seed = Math.abs(Math.sin(rx * 12.9898 + ry * 78.233) * 43758.5453) % 1;
             const templateIdx = Math.floor(seed * TEMPLATES.length);
@@ -1399,6 +1486,8 @@
                 shootProjectile(sx, sy);
             }
             collectNearbyItem();
+            collectRoomCoin();
+            if (isBeggarRoom(localPlayer.rx, localPlayer.ry) && (keys.e || keys.space)) tradeWithBeggar();
         }
 
         function onRoomChange() {
@@ -1411,12 +1500,10 @@
             visitedRooms.add(coordKey);
             renderActiveButton();
             document.getElementById('uiCoord').innerText = `(${localPlayer.rx}, ${localPlayer.ry})`;
-            const sameRoomCount = Object.values(remotePlayers)
-                .filter(p => p.rx === localPlayer.rx && p.ry === localPlayer.ry).length;
-            document.getElementById('uiPlayerCount').innerText = String(sameRoomCount + 1);
+            updatePlayerCount();
             
             const currentTheme = getRoomTheme(localPlayer.rx, localPlayer.ry);
-            document.getElementById('uiRoomThemeTitle').innerText = isGoldenRoom(localPlayer.rx, localPlayer.ry) ? '💛 Золотая комната' : (isKeeperRoom(localPlayer.rx, localPlayer.ry) ? '🎯 Комната Дамми' : currentTheme.label);
+            document.getElementById('uiRoomThemeTitle').innerText = isGoldenRoom(localPlayer.rx, localPlayer.ry) ? '💛 Золотая комната' : (isKeeperRoom(localPlayer.rx, localPlayer.ry) ? '🎯 Комната Дамми' : (isBeggarRoom(localPlayer.rx, localPlayer.ry) ? '🪙 Комната попрошайки' : currentTheme.label));
             dummyDamageTotal = 0; dummyDamageEvents = []; floatingHits = [];
             renderItemHud();
         }
@@ -1535,6 +1622,8 @@
             });
 
             if (isKeeperRoom(localPlayer.rx, localPlayer.ry)) drawKeeperRoom();
+            if (isBeggarRoom(localPlayer.rx, localPlayer.ry)) drawBeggarRoom();
+            if (getRoomCoin(localPlayer.rx, localPlayer.ry)) drawRoomCoin();
 
             activeBombs.forEach(b => {
                 if (b.rx !== localPlayer.rx || b.ry !== localPlayer.ry) return;
