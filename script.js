@@ -1188,6 +1188,8 @@
         }
 
         function makeProjectile(dirX, dirY, charInfo, isGreed=false) {
+            // Safety cap: prevents a held attack/network burst from exhausting the browser.
+            if (projectiles.length >= 120) return null;
             const id = myPlayerId + '_' + Math.random().toString(36).slice(2,9);
             const attackType = isGreed ? 'fire' : charInfo.attackType;
             const p = {
@@ -1253,7 +1255,7 @@
 
         function shootProjectile(dirX, dirY) {
             const now = performance.now();
-            const fireDelay = Math.max(150, (activeCheats.has('MADNESS') ? 240 : 400) / Math.max(1, localPlayer.stats.tears));
+            const fireDelay = Math.max(180, (activeCheats.has('MADNESS') ? 300 : 420) / Math.max(1, localPlayer.stats.tears));
             if (now - localPlayer.lastShootTime < fireDelay) return;
             localPlayer.lastShootTime = now;
             const charInfo = CHARACTERS[localPlayer.character] || CHARACTERS.isaac;
@@ -1262,20 +1264,28 @@
             const origin = localPlayer.character==='lilith' ? lilithFollowerPos() : {x:localPlayer.x,y:localPlayer.y-8};
             if (activeCheats.has('MADNESS')) {
                 const dirs=[{x:dirX,y:dirY},{x:-dirX,y:-dirY},{x:dirY,y:dirX},{x:-dirY,y:-dirX}];
-                dirs.forEach(d=>{ const p=makeProjectile(d.x,d.y,charInfo,isGreed); p.x=origin.x; p.y=origin.y; });
-            } else { const p=makeProjectile(dirX,dirY,charInfo,isGreed); p.x=origin.x; p.y=origin.y; }
+                dirs.forEach(d=>{ const p=makeProjectile(d.x,d.y,charInfo,isGreed); if(p){ p.x=origin.x; p.y=origin.y; } });
+            } else { const p=makeProjectile(dirX,dirY,charInfo,isGreed); if(p){ p.x=origin.x; p.y=origin.y; } }
         }
 
+        let lastLoopError = 0;
         function gameLoop(now) {
             const dt = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
-
-            updatePlayer(dt);
-            updateProjectiles(dt);
-            updateBombs();
-            renderGame();
-            renderMinimap();
-
+            try {
+                updatePlayer(dt);
+                updateProjectiles(dt);
+                updateBombs();
+                renderGame();
+                renderMinimap();
+            } catch (err) {
+                // Never let one bad projectile/render object kill the animation loop.
+                console.error('Game loop error:', err);
+                if (now - lastLoopError > 2000) {
+                    lastLoopError = now;
+                    try { showToast('Внутренняя ошибка кадра — игра продолжает работу'); } catch (_) {}
+                }
+            }
             requestAnimationFrame(gameLoop);
         }
 
@@ -1286,8 +1296,13 @@
         }
 
         function updateProjectiles(dt) {
+            // Remove malformed projectiles defensively before updating them.
             for (let i=projectiles.length-1;i>=0;i--) {
                 const p=projectiles[i];
+                if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.vx) || !Number.isFinite(p.vy)) {
+                    projectiles.splice(i,1);
+                    continue;
+                }
                 p.x += p.vx*dt; p.y += p.vy*dt; p.life -= dt;
                 if (isKeeperRoom(localPlayer.rx,localPlayer.ry) && p.x>345 && p.x<455 && p.y>255 && p.y<355) {
                     const damage = Number(p.damage || localPlayer.stats.damage);
