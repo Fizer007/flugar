@@ -1,5 +1,8 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp, deleteField } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         class SoundEngine {
@@ -119,14 +122,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
         const audio = new SoundEngine();
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'isaac-flash-app';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "demo",
-            authDomain: "demo.firebaseapp.com",
-            projectId: "demo",
-            storageBucket: "demo.appspot.com",
-            messagingSenderId: "123",
-            appId: "1:123:web:123"
-        };
+        const firebaseConfig = window.ISAAC_FIREBASE_CONFIG || null;
 
         let db = null;
         let auth = null;
@@ -134,9 +130,55 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
         let myPlayerId = 'p_' + Math.random().toString(36).substr(2, 6);
         let currentRoomId = null;
         let roomUnsubscribe = null;
+        let roomSyncTimer = null;
+        let roomJoinInProgress = false;
+        const ROOM_STORAGE_KEY = 'isaac-online-room-code';
+
+        
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+            return code;
+        }
+
+function normalizeRoomId(value) {
+            return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 8);
+        }
+
+        function getRoomFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const fromQuery = normalizeRoomId(params.get('room'));
+            if (fromQuery) return fromQuery;
+            const fromHash = normalizeRoomId(window.location.hash.replace(/^#/, ''));
+            return fromHash || null;
+        }
+
+        
+        function getRoomShareLink(roomId) {
+            const clean = normalizeRoomId(roomId);
+            return `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(clean)}`;
+        }
+
+function saveRoomToUrl(roomId) {
+            const clean = normalizeRoomId(roomId);
+            if (!clean) return;
+            try {
+                history.replaceState(null, '', `${window.location.pathname}?room=${encodeURIComponent(clean)}`);
+            } catch (e) {}
+            try { localStorage.setItem(ROOM_STORAGE_KEY, clean); } catch (e) {}
+        }
+
+        function clearRoomFromUrl() {
+            try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
+            try { localStorage.removeItem(ROOM_STORAGE_KEY); } catch (e) {}
+        }
 
         async function initFirebase() {
             try {
+                if (!firebaseConfig || !firebaseConfig.projectId || firebaseConfig.apiKey === 'demo') {
+                    throw new Error('Firebase config is missing. Set window.ISAAC_FIREBASE_CONFIG.');
+                }
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -153,7 +195,25 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
             }
         }
 
-        initFirebase();
+        initFirebase().then(() => {
+            const autoRoom = getRoomFromUrl() || (() => {
+                try { return normalizeRoomId(localStorage.getItem(ROOM_STORAGE_KEY)); } catch (e) { return null; }
+            })();
+            if (autoRoom) {
+                document.getElementById('inputRoomId').value = autoRoom;
+                showToast(`Код комнаты загружен: ${autoRoom}`);
+                // Wait briefly for anonymous auth to finish.
+                const waitForAuth = setInterval(() => {
+                    if (isAuthReady) {
+                        clearInterval(waitForAuth);
+                        const name = document.getElementById('inputName').value.trim() || 'Isaac_Hero';
+                        localPlayer.name = name;
+                        joinNetworkRoom(autoRoom);
+                    }
+                }, 100);
+                setTimeout(() => clearInterval(waitForAuth), 12000);
+            }
+        });
 
         function showToast(msg) {
             const toast = document.getElementById('toast');
@@ -370,6 +430,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
         });
 
         function leaveCurrentRoom() {
+            if (roomSyncTimer) {
+                clearInterval(roomSyncTimer);
+                roomSyncTimer = null;
+            }
             if (roomUnsubscribe) {
                 roomUnsubscribe();
                 roomUnsubscribe = null;
@@ -384,6 +448,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
             }
             currentRoomId = null;
             remotePlayers = {};
+            clearRoomFromUrl();
             chatLogs = [];
             renderChatMessages();
         }
@@ -399,29 +464,34 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
         document.getElementById('btnCreateRoom').addEventListener('click', async () => {
             audio.init();
             localPlayer.name = document.getElementById('inputName').value.trim() || "Isaac_Hero";
-            const newRoomId = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const newRoomId = generateRoomCode();
             await joinNetworkRoom(newRoomId);
         });
 
         document.getElementById('btnJoinRoom').addEventListener('click', async () => {
             audio.init();
             localPlayer.name = document.getElementById('inputName').value.trim() || "Isaac_Hero";
-            const rId = document.getElementById('inputRoomId').value.trim().toUpperCase();
+            const rId = normalizeRoomId(document.getElementById('inputRoomId').value);
             if (!rId) return showToast('Введите код комнаты!');
             await joinNetworkRoom(rId);
         });
 
         async function joinNetworkRoom(roomId) {
+            const cleanRoomId = normalizeRoomId(roomId);
+            if (!cleanRoomId || roomJoinInProgress) return;
+            roomJoinInProgress = true;
             leaveCurrentRoom();
-            currentRoomId = roomId;
-            startScreenGame(roomId);
+            currentRoomId = cleanRoomId;
+            saveRoomToUrl(cleanRoomId);
+            startScreenGame(cleanRoomId);
 
             if (!db || !isAuthReady) {
-                showToast('Оффлайн режим (Нет связи с сервером)');
+                roomJoinInProgress = false;
+                showToast('Онлайн не настроен: добавь настоящий Firebase config в сайт.');
                 return;
             }
 
-            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
+            const roomRef = doc(db, 'rooms', cleanRoomId);
 
             roomUnsubscribe = onSnapshot(roomRef, (snapshot) => {
                 if (!snapshot.exists()) return;
@@ -446,7 +516,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
                     Object.keys(remotePlayers).forEach(pId => {
                         if (!data.players[pId]) delete remotePlayers[pId];
                     });
-                    document.getElementById('uiPlayerCount').innerText = Object.keys(remotePlayers).length + 1;
+                    const sameRoomCount = Object.values(remotePlayers).filter(p => p && p.rx === localPlayer.rx && p.ry === localPlayer.ry).length;
+                    document.getElementById('uiPlayerCount').innerText = sameRoomCount + 1;
                 }
 
                 if (data && Array.isArray(data.chatMessages)) {
@@ -460,9 +531,13 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
                     chatLogs = newMessages;
                     renderChatMessages();
                 }
-            }, (err) => console.error("Firestore sync error:", err));
+            }, (err) => {
+                console.error("Firestore sync error:", err);
+                showToast('Ошибка синхронизации комнаты');
+            });
+            roomJoinInProgress = false;
 
-            setInterval(async () => {
+            roomSyncTimer = setInterval(async () => {
                 if (currentRoomId && db && isAuthReady) {
                     try {
                         const playerUpdate = {};
@@ -604,12 +679,26 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 
         const bindDpad = (id, dx, dy) => {
             const btn = document.getElementById(id);
-            const start = (e) => { e.preventDefault(); audio.init(); mobileDir.x = dx; mobileDir.y = dy; };
-            const end = (e) => { e.preventDefault(); mobileDir.x = 0; mobileDir.y = 0; };
-            btn.addEventListener('touchstart', start);
-            btn.addEventListener('touchend', end);
-            btn.addEventListener('mousedown', start);
-            btn.addEventListener('mouseup', end);
+            if (!btn) return;
+            const start = (e) => {
+                e.preventDefault();
+                audio.init();
+                mobileDir.x = dx;
+                mobileDir.y = dy;
+                if (btn.setPointerCapture && e.pointerId !== undefined) {
+                    try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+                }
+            };
+            const end = (e) => {
+                e.preventDefault();
+                mobileDir.x = 0;
+                mobileDir.y = 0;
+            };
+            btn.addEventListener('pointerdown', start, {passive: false});
+            btn.addEventListener('pointerup', end, {passive: false});
+            btn.addEventListener('pointercancel', end, {passive: false});
+            btn.addEventListener('pointerleave', end, {passive: false});
+            btn.addEventListener('contextmenu', e => e.preventDefault());
         };
 
         bindDpad('btnUp', 0, -1);
@@ -621,8 +710,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
             const btn = document.getElementById(id);
             if (!btn) return;
             const shoot = (e) => { e.preventDefault(); audio.init(); shootProjectile(sx, sy); };
-            btn.addEventListener('touchstart', shoot);
-            btn.addEventListener('mousedown', shoot);
+            btn.addEventListener('pointerdown', shoot, {passive: false});
+            btn.addEventListener('contextmenu', e => e.preventDefault());
         };
 
         bindShooter('btnShootUp', 0, -1);

@@ -113,3 +113,29 @@
 
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Mobile controls: never sit under browser/phone safe-area UI. */
+#mobileControls {
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+}
+#mobileControls .dpad {
+    margin-bottom: 22px;
+}
+@media (max-width: 640px) {
+    #mobileControls {
+        bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    #btnDown {
+        margin-top: 8px;
+    }
+}
+
+/* GitHub Pages / mobile touch controls */
+#mobileControls, #mobileControls button {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}

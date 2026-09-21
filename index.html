@@ -8,7 +8,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik+Dirt&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     
     <link rel="stylesheet" href="style.css">
-
 </head>
 <body class="flex flex-col h-screen w-screen bg-neutral-950 text-neutral-100 overflow-hidden select-none">
 
@@ -176,6 +175,23 @@
 
     </div>
 
-    <script type="module" src="script.js"></script>
+    <script>
+/*
+  GITHUB PAGES + FIREBASE
+  1. Создай Firebase Web App.
+  2. Включи Authentication -> Anonymous.
+  3. Создай Firestore Database.
+  4. Вставь сюда firebaseConfig из Firebase Console.
+*/
+window.ISAAC_FIREBASE_CONFIG = {
+  apiKey: "PASTE_API_KEY",
+  authDomain: "PASTE_PROJECT.firebaseapp.com",
+  projectId: "PASTE_PROJECT_ID",
+  storageBucket: "PASTE_PROJECT.appspot.com",
+  messagingSenderId: "PASTE_MESSAGING_SENDER_ID",
+  appId: "PASTE_APP_ID"
+};
+</script>
+<script type="module" src="script.js"></script>
 </body>
 </html>
