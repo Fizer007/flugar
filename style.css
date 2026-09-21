@@ -16,7 +16,6 @@ body {
 .font-flash { font-family: 'Press Start 2P', monospace; }
 .font-dirt { font-family: 'Rubik Dirt', cursive; }
 
-/* Flash / Madness Combat visual card frame style */
 .flash-card {
     background: linear-gradient(180deg, #1d1a19 0%, #120e0d 100%);
     border: 4px solid #000000;
@@ -34,25 +33,13 @@ body {
 
 .flash-btn:hover {
     background: linear-gradient(180deg, #524741 0%, #2e2622 100%);
-    border-color: #000000;
     color: #facc15;
     transform: translateY(-1px);
-}
-
-.flash-btn:active {
-    transform: translateY(2px);
-    box-shadow: inset 0 2px 5px rgba(0,0,0,0.8);
 }
 
 .flash-btn-red {
     background: linear-gradient(180deg, #881337 0%, #4c0519 100%);
     border-color: #000000;
-    box-shadow: inset 0 1px 0 #be123c;
-}
-
-.flash-btn-red:hover {
-    background: linear-gradient(180deg, #9f1239 0%, #610726 100%);
-    color: #ffffff;
 }
 
 .char-card {
@@ -74,52 +61,10 @@ body {
     box-shadow: 0 0 14px rgba(250, 204, 21, 0.4);
 }
 
-/* Mobile Controls */
-.dpad-btn {
-    background: rgba(30, 25, 23, 0.85);
-    border: 3px solid #000000;
-    box-shadow: inset 0 0 0 1px #443c38;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-    color: #d1d5db;
-}
-
-.dpad-btn:active {
-    background: #facc15;
-    color: #000;
-}
-
-.shoot-btn {
-    background: rgba(120, 20, 20, 0.85);
-    border: 3px solid #000000;
-    box-shadow: inset 0 0 0 1px #9f1239;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.1rem;
-    color: #fecdd3;
-}
-
-.shoot-btn:active {
-    background: #ef4444;
-    color: #fff;
-}
-
-/* Custom Scrollbar */
 .custom-scroll::-webkit-scrollbar {
     width: 6px;
-}
-.custom-scroll::-webkit-scrollbar-track {
-    background: rgba(0,0,0,0.3);
 }
 .custom-scroll::-webkit-scrollbar-thumb {
     background: #443c38;
     border-radius: 4px;
 }
-
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
