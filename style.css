@@ -115,11 +115,11 @@
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 #mobileDpad {
-    bottom: max(18px, env(safe-area-inset-bottom)) !important;
+    bottom: max(105px, calc(env(safe-area-inset-bottom) + 85px)) !important;
     left: max(12px, env(safe-area-inset-left)) !important;
 }
 #mobileShooter {
-    bottom: max(18px, env(safe-area-inset-bottom)) !important;
+    bottom: max(105px, calc(env(safe-area-inset-bottom) + 85px)) !important;
     right: max(12px, env(safe-area-inset-right)) !important;
 }
 #mobileDpad, #mobileShooter, #mobileDpad button, #mobileShooter button {
@@ -178,4 +178,16 @@
 @media (max-width:640px) {
     .item-hud { top: 155px; width: 132px; font-size:8px; opacity:.72; }
     .item-menu { top:155px; }
+}
+
+
+/* Treasure-room / item UI polish */
+.item-hud { box-shadow: 0 8px 24px rgba(0,0,0,.35), inset 0 0 18px rgba(250,204,21,.04); }
+.item-stat { border-bottom: 1px solid rgba(255,255,255,.035); }
+.item-description { box-shadow: 0 0 22px rgba(250,204,21,.16), 0 8px 22px rgba(0,0,0,.55); }
+
+@media (max-width: 640px) {
+    #mobileDpad, #mobileShooter { bottom: max(105px, calc(env(safe-area-inset-bottom) + 85px)) !important; }
+    #mobileDpad { left: 14px !important; }
+    #mobileShooter { right: 14px !important; }
 }

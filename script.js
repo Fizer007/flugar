@@ -182,7 +182,7 @@
                 });
                 updatePlayerCount();
             } else if (packet.type === 'tear') {
-                if (packet.projectile && packet.projectile.ownerId !== myPlayerId) {
+                if (packet.projectile && packet.projectile.ownerId !== myPlayerId && packet.projectile.rx === localPlayer.rx && packet.projectile.ry === localPlayer.ry) {
                     const id = packet.projectile.id;
                     if (!networkProjectileIds.has(id)) {
                         networkProjectileIds.add(id);
@@ -401,6 +401,26 @@
             devil: { name: 'Devil Room', floor: '#1a0505', grid: '#100202', wall: '#3d0a0a', border: '#dc2626', obstacleRock: '#6b1111', label: '😈 Комната Дьявола' }
         };
 
+        // Infinite deterministic room tree: corridors + branches + dead ends.
+        function roomParent(rx, ry) {
+            if (rx === 0 && ry === 0) return null;
+            const ax = Math.abs(rx), ay = Math.abs(ry);
+            if (ax > ay) return { rx: rx - Math.sign(rx), ry };
+            if (ay > ax) return { rx, ry: ry - Math.sign(ry) };
+            const h = Math.abs(Math.sin(rx * 43.17 + ry * 91.73) * 100000);
+            return (h % 2 < 1) ? { rx: rx - Math.sign(rx), ry } : { rx, ry: ry - Math.sign(ry) };
+        }
+        function hasRoomDoor(rx, ry, dir) {
+            const nx = rx + dir.x, ny = ry + dir.y;
+            const np = roomParent(nx, ny);
+            if (np && np.rx === rx && np.ry === ry) return true;
+            const p = roomParent(rx, ry);
+            return !!(p && p.rx === nx && p.ry === ny);
+        }
+        const ROOM_DIRS = {
+            up:{x:0,y:1}, down:{x:0,y:-1}, left:{x:-1,y:0}, right:{x:1,y:0}
+        };
+
         function getRoomTheme(rx, ry) {
             if (rx === 0 && ry === 0) return ROOM_THEMES.basement;
             const h = Math.abs(rx * 31 + ry * 17);
@@ -472,6 +492,8 @@
         let activeCheats = new Set();
         let keys = { w: false, a: false, s: false, d: false };
         let mobileDir = { x: 0, y: 0 };
+        let mobileShoot = { x: 0, y: 0 };
+        let lastHeldShot = 0;
         let projectiles = [];
         let remotePlayers = {};
         let visitedRooms = new Set(["0,0"]);
@@ -741,11 +763,10 @@
             if (k === 'a' || k === 'A') keys.a = true;
             if (k === 's' || k === 'S') keys.s = true;
             if (k === 'd' || k === 'D') keys.d = true;
-
-            if (k === 'ArrowUp') shootProjectile(0, -1);
-            if (k === 'ArrowDown') shootProjectile(0, 1);
-            if (k === 'ArrowLeft') shootProjectile(-1, 0);
-            if (k === 'ArrowRight') shootProjectile(1, 0);
+            if (k === 'ArrowUp') { keys.arrowUp = true; e.preventDefault(); }
+            if (k === 'ArrowDown') { keys.arrowDown = true; e.preventDefault(); }
+            if (k === 'ArrowLeft') { keys.arrowLeft = true; e.preventDefault(); }
+            if (k === 'ArrowRight') { keys.arrowRight = true; e.preventDefault(); }
         });
 
         window.addEventListener('keyup', (e) => {
@@ -754,6 +775,10 @@
             if (k === 'a' || k === 'A') keys.a = false;
             if (k === 's' || k === 'S') keys.s = false;
             if (k === 'd' || k === 'D') keys.d = false;
+            if (k === 'ArrowUp') keys.arrowUp = false;
+            if (k === 'ArrowDown') keys.arrowDown = false;
+            if (k === 'ArrowLeft') keys.arrowLeft = false;
+            if (k === 'ArrowRight') keys.arrowRight = false;
         });
 
         const bindDpad = (id, dx, dy) => {
@@ -788,11 +813,22 @@
         const bindShooter = (id, sx, sy) => {
             const btn = document.getElementById(id);
             if (!btn) return;
-            btn.addEventListener('pointerdown', e => {
+            const start = e => {
                 e.preventDefault();
                 audio.init();
+                mobileShoot.x = sx;
+                mobileShoot.y = sy;
+                try { btn.setPointerCapture(e.pointerId); } catch (err) {}
                 shootProjectile(sx, sy);
-            }, { passive: false });
+            };
+            const end = e => {
+                e.preventDefault();
+                mobileShoot.x = 0;
+                mobileShoot.y = 0;
+            };
+            btn.addEventListener('pointerdown', start, { passive:false });
+            btn.addEventListener('pointerup', end, { passive:false });
+            btn.addEventListener('pointercancel', end, { passive:false });
             btn.addEventListener('contextmenu', e => e.preventDefault());
         };
 
@@ -1002,27 +1038,33 @@
 
         function drawGoldenRoom(items) {
             ctx.save();
-            ctx.fillStyle='#6b4b0b'; ctx.fillRect(0,0,ROOM_WIDTH,ROOM_HEIGHT);
-            ctx.strokeStyle='rgba(255,220,80,.18)'; ctx.lineWidth=2;
+            const gold='#f7c948', cream='#fff3b0';
+            ctx.fillStyle='#5a3a07'; ctx.fillRect(0,0,ROOM_WIDTH,ROOM_HEIGHT);
+            ctx.fillStyle='rgba(255,220,90,.10)'; ctx.fillRect(40,40,ROOM_WIDTH-80,ROOM_HEIGHT-80);
+            ctx.strokeStyle='rgba(255,235,150,.16)'; ctx.lineWidth=2;
             for(let x=40;x<ROOM_WIDTH-40;x+=50) for(let y=40;y<ROOM_HEIGHT-40;y+=50) ctx.strokeRect(x,y,50,50);
-            ctx.fillStyle='rgba(255,214,70,.10)'; ctx.fillRect(40,40,ROOM_WIDTH-80,ROOM_HEIGHT-80);
+            ctx.strokeStyle='rgba(255,220,80,.45)'; ctx.lineWidth=5; ctx.strokeRect(55,55,ROOM_WIDTH-110,ROOM_HEIGHT-110);
+            ctx.strokeStyle='rgba(0,0,0,.28)'; ctx.lineWidth=2; ctx.strokeRect(70,70,ROOM_WIDTH-140,ROOM_HEIGHT-140);
             items.forEach(item=>{
                 if(itemTaken(roomKey(),item.itemId)) return;
                 ctx.save();
+                const glow=ctx.createRadialGradient(item.x,item.y,2,item.x,item.y,55); glow.addColorStop(0,'rgba(255,220,80,.3)'); glow.addColorStop(1,'rgba(255,220,80,0)');
+                ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(item.x,item.y,55,0,Math.PI*2); ctx.fill();
                 if(item.type==='item'){
-                    ctx.fillStyle='#6b6258'; ctx.strokeStyle='#17110a'; ctx.lineWidth=4;
-                    ctx.fillRect(item.x-23,item.y+12,46,12); ctx.strokeRect(item.x-23,item.y+12,46,12);
-                    ctx.fillStyle='#8c8174'; ctx.fillRect(item.x-3,item.y-18,6,30);
-                    ctx.fillStyle='#f8d34e'; ctx.beginPath(); ctx.arc(item.x,item.y-20,15,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle='#21170a'; ctx.strokeStyle='#050403'; ctx.lineWidth=5; ctx.fillRect(item.x-30,item.y+12,60,14); ctx.strokeRect(item.x-30,item.y+12,60,14);
+                    ctx.fillStyle='#8c6a25'; ctx.fillRect(item.x-5,item.y-20,10,34);
+                    ctx.fillStyle=gold; ctx.strokeStyle='#fff1a8'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(item.x,item.y-22,18,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                    ctx.font='27px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y-22);
+                    ctx.fillStyle=cream; ctx.font='bold 9px monospace'; ctx.fillText(item.name.toUpperCase(),item.x,item.y+35);
                 } else {
-                    ctx.fillStyle='rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(item.x,item.y+15,17,7,0,0,Math.PI*2); ctx.fill();
-                    ctx.font='28px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y);
+                    ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(item.x,item.y+18,20,8,0,0,Math.PI*2); ctx.fill();
+                    ctx.font='30px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y);
+                    ctx.fillStyle=cream; ctx.font='bold 9px monospace'; ctx.fillText(item.name.toUpperCase(),item.x,item.y+30);
                 }
                 ctx.restore();
             });
             ctx.restore();
         }
-
         function drawKeeperRoom() {
             const x=400,y=320;
             ctx.save();
@@ -1051,6 +1093,7 @@
             const attackType = isGreed ? 'fire' : charInfo.attackType;
             const p = {
                 id, ownerId:myPlayerId, ownerName:localPlayer.name,
+                rx:localPlayer.rx, ry:localPlayer.ry,
                 x:localPlayer.x, y:localPlayer.y-8,
                 vx:dirX * (isGreed ? 650 : 450) * localPlayer.stats.shotSpeed,
                 vy:dirY * (isGreed ? 650 : 450) * localPlayer.stats.shotSpeed,
@@ -1169,34 +1212,42 @@
             const inXDoorZone = Math.abs(localPlayer.x - midX) < doorHalf;
             const inYDoorZone = Math.abs(localPlayer.y - midY) < doorHalf;
 
-            if (inXDoorZone && localPlayer.y <= WALL_THICKNESS) {
+            if (inXDoorZone && localPlayer.y <= WALL_THICKNESS && hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.up)) {
                 localPlayer.ry += 1;
                 localPlayer.y = ROOM_HEIGHT - WALL_THICKNESS - localPlayer.radius - 10;
                 onRoomChange();
-            } else if (inXDoorZone && localPlayer.y >= ROOM_HEIGHT - WALL_THICKNESS) {
+            } else if (inXDoorZone && localPlayer.y >= ROOM_HEIGHT - WALL_THICKNESS && hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.down)) {
                 localPlayer.ry -= 1;
                 localPlayer.y = WALL_THICKNESS + localPlayer.radius + 10;
                 onRoomChange();
-            } else if (inYDoorZone && localPlayer.x <= WALL_THICKNESS) {
+            } else if (inYDoorZone && localPlayer.x <= WALL_THICKNESS && hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.left)) {
                 localPlayer.rx -= 1;
                 localPlayer.x = ROOM_WIDTH - WALL_THICKNESS - localPlayer.radius - 10;
                 onRoomChange();
-            } else if (inYDoorZone && localPlayer.x >= ROOM_WIDTH - WALL_THICKNESS) {
+            } else if (inYDoorZone && localPlayer.x >= ROOM_WIDTH - WALL_THICKNESS && hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.right)) {
                 localPlayer.rx += 1;
                 localPlayer.x = WALL_THICKNESS + localPlayer.radius + 10;
                 onRoomChange();
             }
 
-            if (!inXDoorZone) {
-                localPlayer.y = Math.max(WALL_THICKNESS + localPlayer.radius, Math.min(ROOM_HEIGHT - WALL_THICKNESS - localPlayer.radius, localPlayer.y));
-            } else {
-                localPlayer.y = Math.max(localPlayer.radius, Math.min(ROOM_HEIGHT - localPlayer.radius, localPlayer.y));
-            }
-
-            if (!inYDoorZone) {
-                localPlayer.x = Math.max(WALL_THICKNESS + localPlayer.radius, Math.min(ROOM_WIDTH - WALL_THICKNESS - localPlayer.radius, localPlayer.x));
-            } else {
-                localPlayer.x = Math.max(localPlayer.radius, Math.min(ROOM_WIDTH - localPlayer.radius, localPlayer.x));
+            const openUp = hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.up);
+            const openDown = hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.down);
+            const openLeft = hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.left);
+            const openRight = hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.right);
+            localPlayer.y = Math.max(openUp && inXDoorZone ? localPlayer.radius : WALL_THICKNESS + localPlayer.radius,
+                Math.min(openDown && inXDoorZone ? ROOM_HEIGHT - localPlayer.radius : ROOM_HEIGHT - WALL_THICKNESS - localPlayer.radius, localPlayer.y));
+            localPlayer.x = Math.max(openLeft && inYDoorZone ? localPlayer.radius : WALL_THICKNESS + localPlayer.radius,
+                Math.min(openRight && inYDoorZone ? ROOM_WIDTH - localPlayer.radius : ROOM_WIDTH - WALL_THICKNESS - localPlayer.radius, localPlayer.x));
+            const nowShot = performance.now();
+            let sx = 0, sy = 0;
+            if (keys.arrowUp) sy = -1;
+            else if (keys.arrowDown) sy = 1;
+            else if (keys.arrowLeft) sx = -1;
+            else if (keys.arrowRight) sx = 1;
+            else if (mobileShoot.x || mobileShoot.y) { sx = mobileShoot.x; sy = mobileShoot.y; }
+            if ((sx || sy) && nowShot - lastHeldShot >= 35) {
+                lastHeldShot = nowShot;
+                shootProjectile(sx, sy);
             }
             collectNearbyItem();
         }
@@ -1247,20 +1298,33 @@
             ctx.strokeStyle = theme.border;
             ctx.lineWidth = 5;
 
-            drawWallSegment(0, 0, ROOM_WIDTH / 2 - DOOR_SIZE / 2, WALL_THICKNESS);
-            drawWallSegment(ROOM_WIDTH / 2 + DOOR_SIZE / 2, 0, ROOM_WIDTH / 2 - DOOR_SIZE / 2, WALL_THICKNESS);
-            drawWallSegment(0, ROOM_HEIGHT - WALL_THICKNESS, ROOM_WIDTH / 2 - DOOR_SIZE / 2, WALL_THICKNESS);
-            drawWallSegment(ROOM_WIDTH / 2 + DOOR_SIZE / 2, ROOM_HEIGHT - WALL_THICKNESS, ROOM_WIDTH / 2 - DOOR_SIZE / 2, WALL_THICKNESS);
-            drawWallSegment(0, 0, WALL_THICKNESS, ROOM_HEIGHT / 2 - DOOR_SIZE / 2);
-            drawWallSegment(0, ROOM_HEIGHT / 2 + DOOR_SIZE / 2, WALL_THICKNESS, ROOM_HEIGHT / 2 - DOOR_SIZE / 2);
-            drawWallSegment(ROOM_WIDTH - WALL_THICKNESS, 0, WALL_THICKNESS, ROOM_HEIGHT / 2 - DOOR_SIZE / 2);
-            drawWallSegment(ROOM_WIDTH - WALL_THICKNESS, ROOM_HEIGHT / 2 + DOOR_SIZE / 2, WALL_THICKNESS, ROOM_HEIGHT / 2 - DOOR_SIZE / 2);
-
-            ctx.fillStyle = '#090707';
-            ctx.fillRect(ROOM_WIDTH / 2 - DOOR_SIZE / 2, 0, DOOR_SIZE, WALL_THICKNESS);
-            ctx.fillRect(ROOM_WIDTH / 2 - DOOR_SIZE / 2, ROOM_HEIGHT - WALL_THICKNESS, DOOR_SIZE, WALL_THICKNESS);
-            ctx.fillRect(0, ROOM_HEIGHT / 2 - DOOR_SIZE / 2, WALL_THICKNESS, DOOR_SIZE);
-            ctx.fillRect(ROOM_WIDTH - WALL_THICKNESS, ROOM_HEIGHT / 2 - DOOR_SIZE / 2, WALL_THICKNESS, DOOR_SIZE);
+            const doors = {
+                up: hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.up),
+                down: hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.down),
+                left: hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.left),
+                right: hasRoomDoor(localPlayer.rx, localPlayer.ry, ROOM_DIRS.right)
+            };
+            if (doors.up) {
+                drawWallSegment(0,0,ROOM_WIDTH/2-DOOR_SIZE/2,WALL_THICKNESS);
+                drawWallSegment(ROOM_WIDTH/2+DOOR_SIZE/2,0,ROOM_WIDTH/2-DOOR_SIZE/2,WALL_THICKNESS);
+            } else drawWallSegment(0,0,ROOM_WIDTH,WALL_THICKNESS);
+            if (doors.down) {
+                drawWallSegment(0,ROOM_HEIGHT-WALL_THICKNESS,ROOM_WIDTH/2-DOOR_SIZE/2,WALL_THICKNESS);
+                drawWallSegment(ROOM_WIDTH/2+DOOR_SIZE/2,ROOM_HEIGHT-WALL_THICKNESS,ROOM_WIDTH/2-DOOR_SIZE/2,WALL_THICKNESS);
+            } else drawWallSegment(0,ROOM_HEIGHT-WALL_THICKNESS,ROOM_WIDTH,WALL_THICKNESS);
+            if (doors.left) {
+                drawWallSegment(0,0,WALL_THICKNESS,ROOM_HEIGHT/2-DOOR_SIZE/2);
+                drawWallSegment(0,ROOM_HEIGHT/2+DOOR_SIZE/2,WALL_THICKNESS,ROOM_HEIGHT/2-DOOR_SIZE/2);
+            } else drawWallSegment(0,0,WALL_THICKNESS,ROOM_HEIGHT);
+            if (doors.right) {
+                drawWallSegment(ROOM_WIDTH-WALL_THICKNESS,0,WALL_THICKNESS,ROOM_HEIGHT/2-DOOR_SIZE/2);
+                drawWallSegment(ROOM_WIDTH-WALL_THICKNESS,ROOM_HEIGHT/2+DOOR_SIZE/2,WALL_THICKNESS,ROOM_HEIGHT/2-DOOR_SIZE/2);
+            } else drawWallSegment(ROOM_WIDTH-WALL_THICKNESS,0,WALL_THICKNESS,ROOM_HEIGHT);
+            ctx.fillStyle='#090707';
+            if (doors.up) ctx.fillRect(ROOM_WIDTH/2-DOOR_SIZE/2,0,DOOR_SIZE,WALL_THICKNESS);
+            if (doors.down) ctx.fillRect(ROOM_WIDTH/2-DOOR_SIZE/2,ROOM_HEIGHT-WALL_THICKNESS,DOOR_SIZE,WALL_THICKNESS);
+            if (doors.left) ctx.fillRect(0,ROOM_HEIGHT/2-DOOR_SIZE/2,WALL_THICKNESS,DOOR_SIZE);
+            if (doors.right) ctx.fillRect(ROOM_WIDTH-WALL_THICKNESS,ROOM_HEIGHT/2-DOOR_SIZE/2,WALL_THICKNESS,DOOR_SIZE);
 
             if (isGoldenRoom(localPlayer.rx, localPlayer.ry)) {
                 drawGoldenRoom(goldenRoomItems());
