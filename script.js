@@ -635,29 +635,6 @@
         document.getElementById('btnActive')?.addEventListener('click',()=>{audio.init();useD6();});
         document.getElementById('mobileActive')?.addEventListener('click',()=>{audio.init();useD6();});
 
-        document.getElementById('btnApplyCheat').addEventListener('click', () => {
-            const input = document.getElementById('inputCheatCode');
-            const code = input.value.trim().toUpperCase();
-            if (!code) return;
-
-            if (code === 'MADNESS') {
-                activeCheats.add('MADNESS');
-                showToast('🔥 ЧИТ АКТИВИРОВАН: MADNESS MODE!');
-                audio.playDoor();
-            } else if (code === 'IDDQD') {
-                activeCheats.add('IDDQD');
-                showToast('✨ ЧИТ АКТИВИРОВАН: GOD MODE & NOCLIP!');
-                audio.playDoor();
-            } else if (code === 'GREED') {
-                activeCheats.add('GREED');
-                showToast('💰 ЧИТ АКТИВИРОВАН: GOLDEN LASERS!');
-                audio.playDoor();
-            } else {
-                showToast('❌ Неверный секретный код!');
-            }
-            input.value = '';
-        });
-
         document.getElementById('btnMute').addEventListener('click', () => {
             audio.muted = !audio.muted;
             document.getElementById('btnMute').innerText = audio.muted ? '🔇 Звук: Выкл' : '🔊 Звук: Вкл';
