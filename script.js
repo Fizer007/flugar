@@ -635,6 +635,24 @@
         document.getElementById('btnActive')?.addEventListener('click',()=>{audio.init();useD6();});
         document.getElementById('mobileActive')?.addEventListener('click',()=>{audio.init();useD6();});
 
+        const patchModal = document.getElementById('patchNotesModal');
+        const patchOpen = document.getElementById('btnPatchNotes');
+        const patchClose = document.getElementById('btnClosePatchNotes');
+        if (patchOpen && patchModal) patchOpen.addEventListener('click', () => {
+            patchModal.classList.remove('hidden');
+            patchModal.classList.add('flex');
+        });
+        if (patchClose && patchModal) patchClose.addEventListener('click', () => {
+            patchModal.classList.add('hidden');
+            patchModal.classList.remove('flex');
+        });
+        if (patchModal) patchModal.addEventListener('click', (e) => {
+            if (e.target === patchModal) {
+                patchModal.classList.add('hidden');
+                patchModal.classList.remove('flex');
+            }
+        });
+
         document.getElementById('btnMute').addEventListener('click', () => {
             audio.muted = !audio.muted;
             document.getElementById('btnMute').innerText = audio.muted ? '🔇 Звук: Выкл' : '🔊 Звук: Вкл';
