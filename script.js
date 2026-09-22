@@ -1231,14 +1231,13 @@
         }
 
         let lilithCompanion = {x:0,y:0,ready:false};
-        let lilithFollowDir = {x:-1,y:0};
         function lilithFollowerPos(){
             const t=performance.now()/1000;
-            const movingX=(keys.d-keys.a)||mobileDir.x, movingY=(keys.s-keys.w)||mobileDir.y;
-            if(movingX||movingY){const len=Math.hypot(movingX,movingY)||1;lilithFollowDir={x:movingX/len,y:movingY/len};}
-            const target={x:localPlayer.x-lilithFollowDir.x*78+Math.cos(t*1.7)*3,y:localPlayer.y-lilithFollowDir.y*78-16+Math.sin(t*2)*3};
-            if(!lilithCompanion.ready){lilithCompanion.x=target.x;lilithCompanion.y=target.y;lilithCompanion.ready=true;}
-            lilithCompanion.x+=(target.x-lilithCompanion.x)*.045;lilithCompanion.y+=(target.y-lilithCompanion.y)*.045;
+            const target={x:localPlayer.x-58+Math.cos(t*1.8)*7, y:localPlayer.y-20+Math.sin(t*2.1)*7};
+            if(!lilithCompanion.ready){ lilithCompanion.x=target.x; lilithCompanion.y=target.y; lilithCompanion.ready=true; }
+            const follow = localPlayer.isMoving ? 0.025 : 0.035;
+            lilithCompanion.x += (target.x-lilithCompanion.x)*follow;
+            lilithCompanion.y += (target.y-lilithCompanion.y)*follow;
             return lilithCompanion;
         }
         function drawLilithFollower(){
@@ -1622,9 +1621,9 @@
             ctx.strokeStyle = '#000000';
             ctx.lineWidth = 3;
 
-            if (charKey !== 'lost') {ctx.beginPath();ctx.ellipse(x-10,y+18+legOffset,7,5,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.beginPath();ctx.ellipse(x+10,y+18-legOffset,7,5,0,0,Math.PI*2);ctx.fill();ctx.stroke();} else {const smokeT=performance.now()/180;for(let i=0;i<7;i++){const a=smokeT+i*1.7,sx=x+Math.sin(a)*10,sy=y+20+(i%3)*7+Math.cos(a*1.3)*3;ctx.fillStyle=`rgba(226,232,240,${0.18+(i%3)*0.07})`;ctx.beginPath();ctx.arc(sx,sy,5+(i%3)*2,0,Math.PI*2);ctx.fill();}}
+            if (charKey !== 'lost' && charKey !== 'azazel') {ctx.beginPath();ctx.ellipse(x-10,y+18+legOffset,7,5,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.beginPath();ctx.ellipse(x+10,y+18-legOffset,7,5,0,0,Math.PI*2);ctx.fill();ctx.stroke();} else if (charKey === 'lost') {const smokeT=performance.now()/180;for(let i=0;i<9;i++){const a=smokeT+i*1.7,sx=x+Math.sin(a)*11,sy=y+18+(i%4)*6+Math.cos(a*1.3)*3;ctx.fillStyle=`rgba(226,232,240,${0.12+(i%4)*0.05})`;ctx.beginPath();ctx.arc(sx,sy,5+(i%4)*2,0,Math.PI*2);ctx.fill();}}
 
-            ctx.fillStyle = charInfo.skin;
+            ctx.fillStyle = charKey === 'lost' ? 'rgba(241,245,249,0.78)' : charInfo.skin;
             ctx.beginPath();
             ctx.ellipse(x, y + 6 - bodyBob, 12, 10, 0, 0, Math.PI * 2);
             ctx.fill();
@@ -1688,7 +1687,7 @@
                 ctx.stroke();
 
             } else if (charKey === 'azazel') {
-                const flap=Math.sin(performance.now()/150)*.12;ctx.save();ctx.translate(x,y+4);ctx.rotate(flap);ctx.fillStyle='#1f2937';ctx.strokeStyle='#000';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-10,4);ctx.quadraticCurveTo(-48,-22,-58,-2);ctx.quadraticCurveTo(-42,8,-18,14);ctx.closePath();ctx.fill();ctx.stroke();ctx.beginPath();ctx.moveTo(10,4);ctx.quadraticCurveTo(48,-22,58,-2);ctx.quadraticCurveTo(42,8,18,14);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(148,163,184,.7)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-18,9);ctx.lineTo(-45,-5);ctx.moveTo(18,9);ctx.lineTo(45,-5);ctx.stroke();ctx.restore();ctx.fillStyle='#0f172a';
+                const flap = isMoving ? Math.sin(walkTimer * 1.7) * 0.28 : Math.sin(performance.now()/380) * 0.06; ctx.save(); ctx.translate(x,y-12); ctx.fillStyle='#273449'; ctx.strokeStyle='#05070a'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.moveTo(-7,4); ctx.quadraticCurveTo(-28,-12,-31,-1); ctx.quadraticCurveTo(-24,7,-9,9); ctx.closePath(); ctx.save(); ctx.rotate(-flap); ctx.fill(); ctx.stroke(); ctx.restore(); ctx.beginPath(); ctx.moveTo(7,4); ctx.quadraticCurveTo(28,-12,31,-1); ctx.quadraticCurveTo(24,7,9,9); ctx.closePath(); ctx.save(); ctx.rotate(flap); ctx.fill(); ctx.stroke(); ctx.restore(); ctx.strokeStyle='rgba(148,163,184,.55)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(-10,6); ctx.lineTo(-25,-2); ctx.moveTo(10,6); ctx.lineTo(25,-2); ctx.stroke(); ctx.restore(); ctx.fillStyle='#0f172a';
                 ctx.beginPath();
                 ctx.moveTo(x - 10, headY - 12);
                 ctx.quadraticCurveTo(x - 18, headY - 24, x - 8, headY - 22);
