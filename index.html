@@ -62,18 +62,51 @@
                     <span>🗝️</span> Создать Онлайн Комнату
                 </button>
 
-                <div class="flex items-center gap-2 mt-1 pt-2 border-t border-neutral-800/80">
-                    <input type="text" id="inputCheatCode" placeholder="Секретный код..." maxlength="12" class="flex-1 uppercase bg-neutral-900 border-2 border-red-900/60 focus:border-red-500 text-red-400 text-center font-mono font-bold py-2 px-3 rounded outline-none text-xs">
-                    <button id="btnApplyCheat" class="flash-btn flash-btn-red py-2 px-4 rounded text-[11px] font-bold uppercase tracking-wider">
-                        Ввести
-                    </button>
-                </div>
+                <button id="btnPatchNotes" class="flash-btn py-2.5 rounded text-xs font-bold text-amber-300 font-flash uppercase tracking-wider flex items-center justify-center gap-2">
+                    <span>📜</span> Патч-ноуты
+                </button>
+
+
             </div>
 
             <div class="text-[10px] text-neutral-500 text-center leading-relaxed">
                 Сетевой режим: WebRTC/P2P. Позиции, слёзы, комнаты, предметы и чат синхронизируются между игроками.
             </div>
 
+        </div>
+    </div>
+
+    <div id="patchNotesModal" class="patch-modal hidden fixed inset-0 z-[100] items-center justify-center p-3">
+        <div class="patch-window w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scroll">
+            <div class="patch-head">
+                <div><div class="patch-kicker">ISAAC ONLINE</div><h2>ПАТЧ-НОУТЫ</h2></div>
+                <button id="btnClosePatchNotes" class="patch-close">✕</button>
+            </div>
+            <div class="patch-current">Текущая сборка • v11 — VISUAL & QUALITY UPDATE</div>
+            <div class="patch-section"><h3>✨ Визуал</h3><ul>
+                <li>Перерисованы монетки, ключи и бомбы прямо на Canvas — без emoji-спрайтов.</li>
+                <li>Пьедесталы и предметы получили собственные пиксельные формы, свечение и лёгкую анимацию.</li>
+                <li>Исправлен эффект «прозрачных» пикапов: теперь у объектов есть непрозрачная база и контур.</li>
+                <li>Сундуки получили более читаемое закрытое/открытое состояние.</li>
+            </ul></div>
+            <div class="patch-section"><h3>🩸 Lilith</h3><ul>
+                <li>Lilith теперь визуально отличается от остальных персонажей.</li>
+                <li>Incubus больше не стоит на фиксированной точке: он плавно следует за Lilith с небольшой задержкой и орбитальным движением.</li>
+                <li>Добавлены отдельные анимации покачивания и аура спутника.</li>
+            </ul></div>
+            <div class="patch-section"><h3>🧹 Лобби</h3><ul>
+                <li>Удалены чит-коды и их поле.</li>
+                <li>Добавлена эта страница патч-ноутов.</li>
+            </ul></div>
+            <div class="patch-history"><h3>История сборок</h3>
+                <div><b>v5</b> — PeerJS/WebRTC, комнаты, карта, золотые комнаты, Dummy/Keeper, предметы, бомбы, мобильное управление.</div>
+                <div><b>v6</b> — D6 для Isaac, заряды, перераздача предметов золотой комнаты, полёт Azazel/Lost.</div>
+                <div><b>v7</b> — общий онлайн-счётчик игроков, нищие/монеты, случайные пикапы, улучшения комнат.</div>
+                <div><b>v8</b> — расширение комнат, сундуки, двери, пьедесталы и дополнительные UI-изменения.</div>
+                <div><b>v9</b> — восстановление игровой базы после проблемной сборки и добавление Lilith/Incubus.</div>
+                <div><b>v10</b> — исправления зависаний игрового цикла и защита от ошибок рендера.</div>
+                <div><b>v11</b> — визуальный редизайн пикапов/предметов, Lilith/Incubus, патч-ноуты и чистка лобби.</div>
+            </div>
         </div>
     </div>
 
