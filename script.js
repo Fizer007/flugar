@@ -141,9 +141,6 @@
         let peerReady = false;
         const networkProjectileIds = new Set();
         const takenItems = new Set();
-        const openedChests = new Set();
-        const chestLootCache = new Map();
-        let chestToastAt = 0;
         let floatingHits = [];
         let dummyHits = [];
         let itemHudHidden = new Set();
@@ -219,19 +216,6 @@
                     renderItemHud();
                     if (isRoomHost) broadcast(packet, senderId);
                 }
-            } else if (packet.type === 'chest_opened') {
-                if (packet.chestKey) {
-                    openedChests.add(packet.chestKey);
-                    if (Array.isArray(packet.loot)) chestLootCache.set(packet.chestKey, packet.loot);
-                    renderItemHud();
-                }
-                if (isRoomHost) broadcast(packet, senderId);
-            } else if (packet.type === 'chest_state') {
-                (packet.opened || []).forEach(k => openedChests.add(k));
-                (packet.loot || []).forEach(entry => {
-                    if (entry && entry.key && Array.isArray(entry.loot)) chestLootCache.set(entry.key, entry.loot);
-                });
-                renderItemHud();
             } else if (packet.type === 'item_state') {
                 (packet.taken || []).forEach(k => takenItems.add(k));
                 renderItemHud();
@@ -271,7 +255,6 @@
             } else if (packet.type === 'hello') {
                 if (isRoomHost) {
                     sendToConnection(packet.conn || null, {type:'item_state', taken:[...takenItems]});
-                    sendToConnection(packet.conn || null, {type:'chest_state', opened:[...openedChests], loot:[...chestLootCache.entries()].map(([key, loot])=>({key,loot}))});
                 }
             }
         }
@@ -286,7 +269,6 @@
                     players: Object.values(remotePlayers)
                 });
                 sendToConnection(conn, { type: 'item_state', taken: [...takenItems] });
-                sendToConnection(conn, { type: 'chest_state', opened: [...openedChests], loot: [...chestLootCache.entries()].map(([key, loot]) => ({key, loot})) });
                 sendToConnection(conn, localPlayerPacket());
                 if (isRoomHost) broadcast(localPlayerPacket(), conn.peer);
             });
@@ -434,14 +416,9 @@
 
         const CHARACTERS = {
             isaac: { id: 'isaac', name: 'Isaac', skin: '#fbcfe8', speed: 215, attackType: 'tear', tearColor: '#60a5fa', desc: 'Розовый • Слёзы под глазами', avatar: '💧' },
-            hank: { id: 'hank', name: 'Hank J.', skin: '#334155', speed: 240, attackType: 'bullet', tearColor: '#facc15', desc: 'Красные очки • Чёрная маска', avatar: '🕶️' },
-            judas: { id: 'judas', name: 'Judas', skin: '#1e1b18', speed: 210, attackType: 'tear', tearColor: '#dc2626', desc: 'Красная феска • Тёмный плащ', avatar: '☪️' },
-            azazel: { id: 'azazel', name: 'Azazel', skin: '#475569', speed: 220, attackType: 'fire', tearColor: '#ef4444', desc: 'Чёрные рожки • Демонические крылья', avatar: '😈' },
-            cain: { id: 'cain', name: 'Cain', skin: '#fef08a', speed: 230, attackType: 'tear', tearColor: '#fbbf24', desc: 'Золотые волосы • Повязка на глаз', avatar: '👁️' },
-            tricky: { id: 'tricky', name: 'Tricky', skin: '#15803d', speed: 235, attackType: 'fire', tearColor: '#22c55e', desc: 'Зелёный клоун • Стальная челюсть', avatar: '🤡' },
-            sanford: { id: 'sanford', name: 'Sanford', skin: '#fdba74', speed: 225, attackType: 'bullet', tearColor: '#fb923c', desc: 'Оранжевая бандана • Тёмные очки', avatar: '🧣' },
-            lost: { id: 'lost', name: 'The Lost', skin: '#f8fafc', speed: 245, attackType: 'tear', tearColor: '#e2e8f0', desc: 'Парящий призрак • Белая аура', avatar: '👻' },
-            lilith: { id: 'lilith', name: 'Lilith', skin: '#7f1d1d', speed: 210, attackType: 'tear', tearColor: '#a855f7', desc: 'Инкубус рядом • стреляет вместо неё', avatar: '🩸' }
+            azazel: { id: 'azazel', name: 'Azazel', skin: '#475569', speed: 220, attackType: 'fire', tearColor: '#ef4444', desc: 'Рожки • Крылья • Полёт', avatar: '😈' },
+            lost: { id: 'lost', name: 'The Lost', skin: '#f8fafc', speed: 245, attackType: 'tear', tearColor: '#e2e8f0', desc: 'Парящий призрак • Дым вместо ног', avatar: '👻' },
+            lilith: { id: 'lilith', name: 'Lilith', skin: '#7f1d1d', speed: 210, attackType: 'tear', tearColor: '#a855f7', desc: 'Инкубус следует за ней', avatar: '🩸' }
         };
 
         const ROOM_WIDTH = 800;
@@ -563,7 +540,7 @@
             stats: { damage: 3.5, tears: 2.5, speed: 1, range: 1, shotSpeed: 1, luck: 0 }
         };
 
-        const activeCheats = new Set(); // legacy compatibility; cheat UI/codes removed
+        let activeCheats = new Set();
         let keys = { w: false, a: false, s: false, d: false };
         let mobileDir = { x: 0, y: 0 };
         let mobileShoot = { x: 0, y: 0 };
@@ -630,22 +607,6 @@
 
         buildCharacterSelector();
 
-        const patchNotesModal = document.getElementById('patchNotesModal');
-        document.getElementById('btnPatchNotes')?.addEventListener('click', () => {
-            patchNotesModal?.classList.remove('hidden');
-            patchNotesModal?.classList.add('flex');
-        });
-        document.getElementById('btnClosePatchNotes')?.addEventListener('click', () => {
-            patchNotesModal?.classList.add('hidden');
-            patchNotesModal?.classList.remove('flex');
-        });
-        patchNotesModal?.addEventListener('click', (e) => {
-            if (e.target === patchNotesModal) {
-                patchNotesModal.classList.add('hidden');
-                patchNotesModal.classList.remove('flex');
-            }
-        });
-
         function renderActiveButton(){
             const visible = localPlayer.character === 'isaac';
             ['btnActive','mobileActive'].forEach(id=>{
@@ -673,6 +634,29 @@
         }
         document.getElementById('btnActive')?.addEventListener('click',()=>{audio.init();useD6();});
         document.getElementById('mobileActive')?.addEventListener('click',()=>{audio.init();useD6();});
+
+        document.getElementById('btnApplyCheat').addEventListener('click', () => {
+            const input = document.getElementById('inputCheatCode');
+            const code = input.value.trim().toUpperCase();
+            if (!code) return;
+
+            if (code === 'MADNESS') {
+                activeCheats.add('MADNESS');
+                showToast('🔥 ЧИТ АКТИВИРОВАН: MADNESS MODE!');
+                audio.playDoor();
+            } else if (code === 'IDDQD') {
+                activeCheats.add('IDDQD');
+                showToast('✨ ЧИТ АКТИВИРОВАН: GOD MODE & NOCLIP!');
+                audio.playDoor();
+            } else if (code === 'GREED') {
+                activeCheats.add('GREED');
+                showToast('💰 ЧИТ АКТИВИРОВАН: GOLDEN LASERS!');
+                audio.playDoor();
+            } else {
+                showToast('❌ Неверный секретный код!');
+            }
+            input.value = '';
+        });
 
         document.getElementById('btnMute').addEventListener('click', () => {
             audio.muted = !audio.muted;
@@ -716,8 +700,6 @@
             projectiles = [];
             networkProjectileIds.clear();
             takenItems.clear();
-            openedChests.clear();
-            chestLootCache.clear();
             goldenRoomOverrides.clear();
             d6Charges = 6;
             inventory = {coins:0,keys:0,bombs:0};
@@ -833,7 +815,10 @@
             localPlayer.x = ROOM_WIDTH / 2;
             localPlayer.y = ROOM_HEIGHT / 2;
             visitedRooms = new Set(["0,0"]);
-            d6Charges = 6; goldenRoomOverrides.clear();
+            d6Charges = localPlayer.character === 'isaac' ? 6 : 0;
+            goldenRoomOverrides.clear();
+            inventory = {coins:localPlayer.character==='lost'?1:0,keys:0,bombs:localPlayer.character==='isaac'?1:0};
+            lilithCompanion.ready=false; lilithFollowDir={x:-1,y:0};
             projectiles = [];
             activeBombs = [];
             renderItemHud();
@@ -1033,70 +1018,6 @@
 
         function roomKey() { return `${localPlayer.rx},${localPlayer.ry}`; }
 
-        function chestKey(rx, ry, index) {
-            return `chest:${rx},${ry}:${index}`;
-        }
-
-        function getRoomChests(rx, ry) {
-            return getRoomObstacles(rx, ry).filter(o => o.type === 'chest');
-        }
-
-        function getChestLoot(rx, ry, index) {
-            const key = chestKey(rx, ry, index);
-            if (chestLootCache.has(key)) return chestLootCache.get(key);
-            const h = Math.floor(coordHash(rx * 7 + index * 13 + 19, ry * 11 - index * 5 - 7) * 1000000);
-            const useItem = (h % 100) >= 68;
-            const x = getRoomChests(rx, ry)[index]?.x ?? 400;
-            const y = (getRoomChests(rx, ry)[index]?.y ?? 250) + 55;
-            const loot = useItem
-                ? [{ itemId:`chest_${index}_0`, type:'item', ...ITEM_POOL[(h >>> 3) % ITEM_POOL.length], x, y }]
-                : [{ itemId:`chest_${index}_0`, type:'pickup', ...PICKUP_POOL[(h >>> 5) % PICKUP_POOL.length], x, y }];
-            chestLootCache.set(key, loot);
-            return loot;
-        }
-
-        function getChestLootItems() {
-            const out = [];
-            const chests = getRoomChests(localPlayer.rx, localPlayer.ry);
-            chests.forEach((chest, index) => {
-                const key = chestKey(localPlayer.rx, localPlayer.ry, index);
-                if (!openedChests.has(key)) return;
-                getChestLoot(localPlayer.rx, localPlayer.ry, index).forEach(item => out.push(item));
-            });
-            return out;
-        }
-
-        function openNearbyChest() {
-            const chests = getRoomChests(localPlayer.rx, localPlayer.ry);
-            for (let i = 0; i < chests.length; i++) {
-                const chest = chests[i];
-                const key = chestKey(localPlayer.rx, localPlayer.ry, i);
-                if (openedChests.has(key)) continue;
-                if (Math.hypot(localPlayer.x - chest.x, localPlayer.y - chest.y) > 58) continue;
-                if (inventory.keys <= 0) {
-                    const now = performance.now();
-                    if (now - chestToastAt > 900) {
-                        chestToastAt = now;
-                        showToast('🔑 Нужен ключ');
-                    }
-                    return;
-                }
-                inventory.keys--;
-                openedChests.add(key);
-                const loot = getChestLoot(localPlayer.rx, localPlayer.ry, i);
-                audio.playDoor();
-                showToast('🔓 Сундук открыт!');
-                const packet = {type:'chest_opened', chestKey:key, loot};
-                if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection, packet);
-                renderItemHud();
-                return;
-            }
-        }
-
-        function allNearbyItems() {
-            return [...goldenRoomItems(), ...getChestLootItems()];
-        }
-
         function applyItem(item) {
             if (item.type === 'pickup') {
                 if (item.kind === 'coin') inventory.coins++;
@@ -1119,8 +1040,7 @@
         }
 
         function collectNearbyItem() {
-            openNearbyChest();
-            const items = allNearbyItems();
+            const items = goldenRoomItems();
             if (!items.length) return;
             const key = roomKey();
             for (const item of items) {
@@ -1193,7 +1113,7 @@
         function renderItemDescription() {
             const box=document.getElementById('itemDescription');
             if(!box) return;
-            const item=allNearbyItems().find(it=>!itemTaken(roomKey(),it.itemId) && Math.hypot(localPlayer.x-it.x,localPlayer.y-it.y)<90);
+            const item=goldenRoomItems().find(it=>!itemTaken(roomKey(),it.itemId) && Math.hypot(localPlayer.x-it.x,localPlayer.y-it.y)<90);
             if(!item){ box.classList.add('hidden'); return; }
             box.classList.remove('hidden');
             box.innerHTML=`<b>${item.icon} ${item.name}</b><br><span>${item.desc}</span><br><small>Подойди ближе, чтобы взять</small>`;
@@ -1213,69 +1133,29 @@
             return dummyDamageEvents.reduce((a,e)=>a+e.damage,0)/2;
         }
 
-        function drawPixelPickupIcon(kind, x, y, scale=1, t=0){
-            ctx.save(); ctx.translate(x,y); ctx.scale(scale,scale);
-            ctx.imageSmoothingEnabled=false; ctx.lineWidth=2.5; ctx.strokeStyle='#17110d';
-            const bob=Math.sin(t*5)*2;
-            if(kind==='coin'){
-                ctx.translate(0,bob); ctx.fillStyle='#f5b928'; ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.fill(); ctx.stroke();
-                ctx.fillStyle='#ffe69a'; ctx.beginPath(); ctx.arc(-3,-3,7,0,Math.PI*2); ctx.fill();
-                ctx.fillStyle='#a86d08'; ctx.fillRect(-2,-7,4,14); ctx.fillRect(-6,-2,12,4);
-            } else if(kind==='key'){
-                ctx.translate(0,bob); ctx.strokeStyle='#3b2504'; ctx.lineWidth=5; ctx.beginPath(); ctx.arc(-6,-5,7,0,Math.PI*2); ctx.stroke();
-                ctx.strokeStyle='#ffd35a'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(-6,-5,7,0,Math.PI*2); ctx.stroke(); ctx.fillStyle='#eab308'; ctx.fillRect(0,-2,15,5); ctx.fillRect(9,3,4,7); ctx.fillRect(5,3,4,5);
-            } else if(kind==='bomb'){
-                ctx.translate(0,bob); ctx.fillStyle='#29231f'; ctx.beginPath(); ctx.arc(0,3,12,0,Math.PI*2); ctx.fill(); ctx.stroke();
-                ctx.strokeStyle='#d6d3d1'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(1,-9); ctx.quadraticCurveTo(4,-17,10,-16); ctx.stroke();
-                ctx.fillStyle='#facc15'; ctx.beginPath(); ctx.arc(11,-16,3+Math.sin(t*8),0,Math.PI*2); ctx.fill();
-            }
-            ctx.restore();
-        }
-
-        function drawPedestalAndItem(item,x,y,t=0){
-            const bob=Math.sin(t*3)*3;
-            ctx.save();
-            ctx.fillStyle='rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(x,y+25,25,8,0,0,Math.PI*2); ctx.fill();
-            ctx.fillStyle='#241b16'; ctx.strokeStyle='#090604'; ctx.lineWidth=4; ctx.fillRect(x-29,y+12,58,12); ctx.strokeRect(x-29,y+12,58,12);
-            ctx.fillStyle='#6f5747'; ctx.fillRect(x-9,y-5,18,18); ctx.strokeRect(x-9,y-5,18,18);
-            ctx.fillStyle='#8f745d'; ctx.beginPath(); ctx.ellipse(x,y-5,22,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
-            drawItemIcon(item,x,y-28+bob,1,t);
-            ctx.fillStyle='#f4e7c1'; ctx.font='bold 9px monospace'; ctx.textAlign='center'; ctx.fillText(item.name.toUpperCase(),x,y+39);
-            ctx.restore();
-        }
-
-        function drawItemIcon(item,x,y,scale=1,t=0){
-            ctx.save(); ctx.translate(x,y); ctx.scale(scale,scale); ctx.imageSmoothingEnabled=false; ctx.lineWidth=3; ctx.strokeStyle='#090604';
-            const id=item.id;
-            const glow=ctx.createRadialGradient(0,0,2,0,0,25); glow.addColorStop(0,'rgba(255,255,220,.28)'); glow.addColorStop(1,'rgba(255,255,220,0)'); ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(0,0,25,0,Math.PI*2); ctx.fill();
-            if(id==='sad_onion'){ ctx.fillStyle='#b7a0c9'; ctx.beginPath(); ctx.moveTo(0,-18); ctx.quadraticCurveTo(-17,-8,-12,10); ctx.quadraticCurveTo(0,22,12,10); ctx.quadraticCurveTo(17,-8,0,-18); ctx.fill(); ctx.stroke(); ctx.fillStyle='#7d5b8f'; ctx.fillRect(-3,-23,6,6); }
-            else if(id==='magic_mushroom'){ ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.arc(0,-5,18,Math.PI,0); ctx.lineTo(16,8); ctx.lineTo(-16,8); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle='#f8fafc'; ctx.fillRect(-10,-9,5,5); ctx.fillRect(5,-12,5,5); ctx.fillStyle='#d6b58a'; ctx.fillRect(-8,8,16,13); ctx.strokeRect(-8,8,16,13); }
-            else if(id==='pentagram'){ ctx.fillStyle='#ef4444'; ctx.beginPath(); for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2?8:19; const px=Math.cos(a)*r,py=Math.sin(a)*r; i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); ctx.fill(); ctx.stroke(); }
-            else if(id==='lucky_foot'){ ctx.fillStyle='#65a30d'; ctx.beginPath(); ctx.arc(-2,1,11,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(9,-8,5,0,Math.PI*2); ctx.arc(13,-1,5,0,Math.PI*2); ctx.fill(); ctx.stroke(); }
-            else if(id==='growth_hormones'){ ctx.fillStyle='#67e8f9'; ctx.fillRect(-8,-15,16,28); ctx.strokeRect(-8,-15,16,28); ctx.fillStyle='#e0f2fe'; ctx.fillRect(-5,-19,10,5); ctx.fillStyle='#0f766e'; ctx.fillRect(-5,-5,10,12); }
-            else if(id==='cricket_head'){ ctx.fillStyle='#6b4f3a'; ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.fillStyle='#111'; ctx.beginPath(); ctx.arc(-5,-2,3,0,Math.PI*2); ctx.arc(5,-2,3,0,Math.PI*2); ctx.fill(); }
-            else if(id==='inner_eye'){ ctx.fillStyle='#f8fafc'; ctx.beginPath(); ctx.ellipse(0,0,18,11,0,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.fillStyle='#60a5fa'; ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#111'; ctx.beginPath(); ctx.arc(0,0,2.5,0,Math.PI*2); ctx.fill(); }
-            else if(id==='rotten_baby'){ ctx.fillStyle='#84cc16'; ctx.beginPath(); ctx.arc(0,2,14,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.fillStyle='#111'; ctx.beginPath(); ctx.arc(-5,-1,2,0,Math.PI*2); ctx.arc(5,-1,2,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#65a30d'; ctx.beginPath(); ctx.moveTo(-10,-10);ctx.lineTo(-15,-18);ctx.moveTo(10,-10);ctx.lineTo(15,-18);ctx.stroke(); }
-            else { ctx.fillStyle='#facc15'; ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.fill(); ctx.stroke(); }
-            ctx.restore();
-        }
-
         function drawGoldenRoom(items) {
             ctx.save();
             const gold='#f7c948', cream='#fff3b0';
-            ctx.fillStyle='#5a3a07'; ctx.fillRect(0,0,ROOM_WIDTH,ROOM_HEIGHT);
+            ctx.fillStyle='rgba(90,58,7,.72)'; ctx.fillRect(WALL_THICKNESS,WALL_THICKNESS,ROOM_WIDTH-WALL_THICKNESS*2,ROOM_HEIGHT-WALL_THICKNESS*2);
             ctx.fillStyle='rgba(255,220,90,.10)'; ctx.fillRect(40,40,ROOM_WIDTH-80,ROOM_HEIGHT-80);
             ctx.strokeStyle='rgba(255,235,150,.16)'; ctx.lineWidth=2;
             for(let x=40;x<ROOM_WIDTH-40;x+=50) for(let y=40;y<ROOM_HEIGHT-40;y+=50) ctx.strokeRect(x,y,50,50);
-            ctx.strokeStyle='rgba(255,220,80,.45)'; ctx.lineWidth=5; ctx.strokeRect(55,55,ROOM_WIDTH-110,ROOM_HEIGHT-110);
-            ctx.strokeStyle='rgba(0,0,0,.28)'; ctx.lineWidth=2; ctx.strokeRect(70,70,ROOM_WIDTH-140,ROOM_HEIGHT-140);
+            ctx.strokeStyle='#f7c948';ctx.lineWidth=7;ctx.strokeRect(48,48,ROOM_WIDTH-96,ROOM_HEIGHT-96);ctx.strokeStyle='rgba(255,245,190,.75)';ctx.lineWidth=2;ctx.strokeRect(60,60,ROOM_WIDTH-120,ROOM_HEIGHT-120);const doors={up:hasRoomDoor(localPlayer.rx,localPlayer.ry,ROOM_DIRS.up),down:hasRoomDoor(localPlayer.rx,localPlayer.ry,ROOM_DIRS.down),left:hasRoomDoor(localPlayer.rx,localPlayer.ry,ROOM_DIRS.left),right:hasRoomDoor(localPlayer.rx,localPlayer.ry,ROOM_DIRS.right)};ctx.fillStyle='#f7c948';if(doors.up)ctx.fillRect(ROOM_WIDTH/2-DOOR_SIZE/2,40,DOOR_SIZE,8);if(doors.down)ctx.fillRect(ROOM_WIDTH/2-DOOR_SIZE/2,ROOM_HEIGHT-48,DOOR_SIZE,8);if(doors.left)ctx.fillRect(40,ROOM_HEIGHT/2-DOOR_SIZE/2,8,DOOR_SIZE);if(doors.right)ctx.fillRect(ROOM_WIDTH-48,ROOM_HEIGHT/2-DOOR_SIZE/2,8,DOOR_SIZE);
             items.forEach(item=>{
-                if(itemTaken(roomKey(),item.itemId)) return;
                 ctx.save();
                 const glow=ctx.createRadialGradient(item.x,item.y,2,item.x,item.y,55); glow.addColorStop(0,'rgba(255,220,80,.3)'); glow.addColorStop(1,'rgba(255,220,80,0)');
                 ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(item.x,item.y,55,0,Math.PI*2); ctx.fill();
-                if(item.type==='item') drawPedestalAndItem(item,item.x,item.y,performance.now()/1000);
-                else { drawPixelPickupIcon(item.kind,item.x,item.y,1,performance.now()/1000); ctx.fillStyle=cream; ctx.font='bold 9px monospace'; ctx.textAlign='center'; ctx.fillText(item.name.toUpperCase(),item.x,item.y+30); }
+                if(item.type==='item'){
+                    ctx.fillStyle='#21170a'; ctx.strokeStyle='#050403'; ctx.lineWidth=5; ctx.fillRect(item.x-30,item.y+12,60,14); ctx.strokeRect(item.x-30,item.y+12,60,14);
+                    ctx.fillStyle='#8c6a25'; ctx.fillRect(item.x-5,item.y-20,10,34);
+                    ctx.fillStyle=gold; ctx.strokeStyle='#fff1a8'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(item.x,item.y-22,18,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                    ctx.font='27px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y-22);
+                    ctx.fillStyle=cream; ctx.font='bold 9px monospace'; ctx.fillText(item.name.toUpperCase(),item.x,item.y+35);
+                } else {
+                    ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(item.x,item.y+18,20,8,0,0,Math.PI*2); ctx.fill();
+                    ctx.font='30px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,item.x,item.y);
+                    ctx.fillStyle=cream; ctx.font='bold 9px monospace'; ctx.fillText(item.name.toUpperCase(),item.x,item.y+30);
+                }
                 ctx.restore();
             });
             ctx.restore();
@@ -1356,35 +1236,21 @@
         }
 
         let lilithCompanion = {x:0,y:0,ready:false};
+        let lilithFollowDir = {x:-1,y:0};
         function lilithFollowerPos(){
             const t=performance.now()/1000;
-            const dx=(keys.arrowRight?1:keys.arrowLeft?-1:0), dy=(keys.arrowDown?1:keys.arrowUp?-1:0);
-            const fx=dx||mobileShoot.x, fy=dy||mobileShoot.y;
-            const len=Math.hypot(fx,fy)||1;
-            const target={x:localPlayer.x-fx/len*46 + Math.cos(t*2.1)*5, y:localPlayer.y-fy/len*46-18 + Math.sin(t*2.6)*5};
-            if(!lilithCompanion.ready){ lilithCompanion.x=target.x; lilithCompanion.y=target.y; lilithCompanion.ready=true; }
-            const follow=Math.min(1,0.12 + (performance.now()%1000)/10000);
-            lilithCompanion.x += (target.x-lilithCompanion.x)*follow;
-            lilithCompanion.y += (target.y-lilithCompanion.y)*follow;
+            const movingX=(keys.d-keys.a)||mobileDir.x, movingY=(keys.s-keys.w)||mobileDir.y;
+            if(movingX||movingY){const len=Math.hypot(movingX,movingY)||1;lilithFollowDir={x:movingX/len,y:movingY/len};}
+            const target={x:localPlayer.x-lilithFollowDir.x*78+Math.cos(t*1.7)*3,y:localPlayer.y-lilithFollowDir.y*78-16+Math.sin(t*2)*3};
+            if(!lilithCompanion.ready){lilithCompanion.x=target.x;lilithCompanion.y=target.y;lilithCompanion.ready=true;}
+            lilithCompanion.x+=(target.x-lilithCompanion.x)*.045;lilithCompanion.y+=(target.y-lilithCompanion.y)*.045;
             return lilithCompanion;
         }
         function drawLilithFollower(){
-            if(localPlayer.character!=='lilith') return;
-            const p=lilithFollowerPos(), t=performance.now()/1000;
-            ctx.save();
-            const aura=28+Math.sin(t*4)*3;
-            const glow=ctx.createRadialGradient(p.x,p.y,3,p.x,p.y,aura);
-            glow.addColorStop(0,'rgba(216,180,254,.34)'); glow.addColorStop(1,'rgba(168,85,247,0)');
-            ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(p.x,p.y,aura,0,Math.PI*2); ctx.fill();
-            ctx.strokeStyle='rgba(216,180,254,.55)'; ctx.lineWidth=2;
-            ctx.beginPath(); ctx.arc(p.x,p.y,18+Math.sin(t*3)*2,t*.7,t*.7+4.4); ctx.stroke();
-            ctx.fillStyle='#4c1d95'; ctx.strokeStyle='#09010f'; ctx.lineWidth=3;
-            ctx.beginPath(); ctx.ellipse(p.x,p.y,15,11,Math.sin(t)*.12,0,Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.fillStyle='#a855f7'; ctx.beginPath(); ctx.moveTo(p.x-12,p.y-7); ctx.lineTo(p.x-23,p.y-17); ctx.lineTo(p.x-10,p.y-11); ctx.closePath(); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(p.x+12,p.y-7); ctx.lineTo(p.x+23,p.y-17); ctx.lineTo(p.x+10,p.y-11); ctx.closePath(); ctx.fill(); ctx.stroke();
-            ctx.fillStyle='#f5d0fe'; ctx.beginPath(); ctx.arc(p.x-5,p.y-2,2.5,0,Math.PI*2); ctx.arc(p.x+5,p.y-2,2.5,0,Math.PI*2); ctx.fill();
-            ctx.fillStyle='#e9d5ff'; ctx.font='bold 8px monospace'; ctx.textAlign='center'; ctx.fillText('INCUBUS',p.x,p.y-27);
-            ctx.restore();
+            if(localPlayer.character!=='lilith') return; const p=lilithFollowerPos(),t=performance.now()/1000;ctx.save();
+            const aura=28+Math.sin(t*4)*3,glow=ctx.createRadialGradient(p.x,p.y,3,p.x,p.y,aura);glow.addColorStop(0,'rgba(216,180,254,.34)');glow.addColorStop(1,'rgba(168,85,247,0)');ctx.fillStyle=glow;ctx.beginPath();ctx.arc(p.x,p.y,aura,0,Math.PI*2);ctx.fill();
+            ctx.strokeStyle='rgba(216,180,254,.55)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(p.x,p.y,18+Math.sin(t*3)*2,t*.7,t*.7+4.4);ctx.stroke();ctx.fillStyle='#4c1d95';ctx.strokeStyle='#09010f';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(p.x,p.y,15,11,Math.sin(t)*.12,0,Math.PI*2);ctx.fill();ctx.stroke();
+            ctx.fillStyle='#a855f7';ctx.beginPath();ctx.moveTo(p.x-12,p.y-7);ctx.lineTo(p.x-23,p.y-17);ctx.lineTo(p.x-10,p.y-11);ctx.closePath();ctx.fill();ctx.stroke();ctx.beginPath();ctx.moveTo(p.x+12,p.y-7);ctx.lineTo(p.x+23,p.y-17);ctx.lineTo(p.x+10,p.y-11);ctx.closePath();ctx.fill();ctx.stroke();ctx.fillStyle='#f5d0fe';ctx.beginPath();ctx.arc(p.x-5,p.y-2,2.5,0,Math.PI*2);ctx.arc(p.x+5,p.y-2,2.5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#e9d5ff';ctx.font='bold 8px monospace';ctx.textAlign='center';ctx.fillText('INCUBUS',p.x,p.y-27);ctx.restore();
         }
 
         function shootProjectile(dirX, dirY) {
@@ -1496,22 +1362,6 @@
                                 if (distance > 0) {
                                     newX = closestX + (distX / distance) * localPlayer.radius;
                                     newY = closestY + (distY / distance) * localPlayer.radius;
-                                }
-                            }
-                        }
-                        if (obs.type === 'chest') {
-                            const chestIndex = getRoomChests(localPlayer.rx, localPlayer.ry).indexOf(obs);
-                            const isOpen = openedChests.has(chestKey(localPlayer.rx, localPlayer.ry, chestIndex));
-                            if (!isOpen) {
-                                const closestX = Math.max(obs.x - obs.w/2, Math.min(newX, obs.x + obs.w/2));
-                                const closestY = Math.max(obs.y - obs.h/2, Math.min(newY, obs.y + obs.h/2));
-                                const distX = newX - closestX, distY = newY - closestY;
-                                const distance = Math.hypot(distX, distY);
-                                if (distance < localPlayer.radius) {
-                                    if (distance > 0) {
-                                        newX = closestX + (distX / distance) * localPlayer.radius;
-                                        newY = closestY + (distY / distance) * localPlayer.radius;
-                                    }
                                 }
                             }
                         }
@@ -1680,9 +1530,13 @@
                     ctx.stroke();
                     ctx.restore();
                 } else if (obs.type === 'chest') {
-                    const chestIndex = getRoomChests(localPlayer.rx, localPlayer.ry).indexOf(obs);
-                    const isOpen = openedChests.has(chestKey(localPlayer.rx, localPlayer.ry, chestIndex));
-                    drawChest(obs.x, obs.y, isOpen);
+                    ctx.save();
+                    ctx.fillStyle = '#facc15';
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 3;
+                    ctx.fillRect(obs.x - obs.w/2, obs.y - obs.h/2, obs.w, obs.h);
+                    ctx.strokeRect(obs.x - obs.w/2, obs.y - obs.h/2, obs.w, obs.h);
+                    ctx.restore();
                 } else if (obs.type === 'spike') {
                     ctx.fillStyle = '#78716c';
                     ctx.strokeStyle = '#000000';
@@ -1695,17 +1549,6 @@
                     ctx.arc(obs.x, obs.y, 6, 0, Math.PI * 2);
                     ctx.fill();
                 }
-            });
-
-            getChestLootItems().forEach(item => {
-                if (itemTaken(roomKey(), item.itemId)) return;
-                ctx.save();
-                const pulse = 1 + Math.sin(performance.now()/180) * 0.05;
-                ctx.translate(item.x, item.y); ctx.scale(pulse, pulse);
-                ctx.fillStyle='rgba(250,204,21,.18)'; ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2); ctx.fill();
-                if (item.type === 'item') drawItemIcon(item,0,-10,0.9,performance.now()/1000);
-                else drawPixelPickupIcon(item.kind,0,0,1,performance.now()/1000);
-                ctx.restore();
             });
 
             if (isKeeperRoom(localPlayer.rx, localPlayer.ry)) drawKeeperRoom();
@@ -1753,42 +1596,6 @@
             renderItemDescription();
         }
 
-        function drawChest(x, y, open) {
-            ctx.save();
-            const bob = open ? 0 : Math.sin(performance.now()/260) * 1.2;
-            ctx.translate(x, y + bob);
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = '#1a1006';
-            if (!open) {
-                ctx.fillStyle = '#8b5a2b';
-                ctx.fillRect(-24, -15, 48, 30);
-                ctx.strokeRect(-24, -15, 48, 30);
-                ctx.fillStyle = '#b77932';
-                ctx.fillRect(-24, -15, 48, 9);
-                ctx.strokeRect(-24, -15, 48, 9);
-                ctx.fillStyle = '#facc15';
-                ctx.fillRect(-4, -2, 8, 11);
-                ctx.strokeRect(-4, -2, 8, 11);
-            } else {
-                ctx.fillStyle = '#8b5a2b';
-                ctx.fillRect(-24, -9, 48, 24);
-                ctx.strokeRect(-24, -9, 48, 24);
-                ctx.fillStyle = '#b77932';
-                ctx.save();
-                ctx.translate(0, -11);
-                ctx.rotate(-0.18);
-                ctx.fillRect(-24, -10, 48, 9);
-                ctx.strokeRect(-24, -10, 48, 9);
-                ctx.restore();
-                ctx.fillStyle = '#facc15';
-                ctx.fillRect(-4, -2, 8, 7);
-                ctx.strokeRect(-4, -2, 8, 7);
-                ctx.fillStyle = '#ffe8a3';
-                ctx.fillRect(-14, 5, 28, 3);
-            }
-            ctx.restore();
-        }
-
         function drawWallSegment(x, y, w, h) {
             ctx.beginPath();
             ctx.rect(x, y, w, h);
@@ -1820,17 +1627,7 @@
             ctx.strokeStyle = '#000000';
             ctx.lineWidth = 3;
 
-            if (charKey !== 'lost') {
-                ctx.beginPath();
-                ctx.ellipse(x - 10, y + 18 + legOffset, 7, 5, 0, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-
-                ctx.beginPath();
-                ctx.ellipse(x + 10, y + 18 - legOffset, 7, 5, 0, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-            }
+            if (charKey !== 'lost') {ctx.beginPath();ctx.ellipse(x-10,y+18+legOffset,7,5,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.beginPath();ctx.ellipse(x+10,y+18-legOffset,7,5,0,0,Math.PI*2);ctx.fill();ctx.stroke();} else {const smokeT=performance.now()/180;for(let i=0;i<7;i++){const a=smokeT+i*1.7,sx=x+Math.sin(a)*10,sy=y+20+(i%3)*7+Math.cos(a*1.3)*3;ctx.fillStyle=`rgba(226,232,240,${0.18+(i%3)*0.07})`;ctx.beginPath();ctx.arc(sx,sy,5+(i%3)*2,0,Math.PI*2);ctx.fill();}}
 
             ctx.fillStyle = charInfo.skin;
             ctx.beginPath();
@@ -1896,7 +1693,7 @@
                 ctx.stroke();
 
             } else if (charKey === 'azazel') {
-                ctx.fillStyle = '#0f172a';
+                const flap=Math.sin(performance.now()/150)*.12;ctx.save();ctx.translate(x,y+4);ctx.rotate(flap);ctx.fillStyle='#1f2937';ctx.strokeStyle='#000';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-10,4);ctx.quadraticCurveTo(-48,-22,-58,-2);ctx.quadraticCurveTo(-42,8,-18,14);ctx.closePath();ctx.fill();ctx.stroke();ctx.beginPath();ctx.moveTo(10,4);ctx.quadraticCurveTo(48,-22,58,-2);ctx.quadraticCurveTo(42,8,18,14);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(148,163,184,.7)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-18,9);ctx.lineTo(-45,-5);ctx.moveTo(18,9);ctx.lineTo(45,-5);ctx.stroke();ctx.restore();ctx.fillStyle='#0f172a';
                 ctx.beginPath();
                 ctx.moveTo(x - 10, headY - 12);
                 ctx.quadraticCurveTo(x - 18, headY - 24, x - 8, headY - 22);
