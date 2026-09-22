@@ -212,3 +212,4 @@
 
 /* Stable active item controls */
 .active-btn{background:#111827;border:2px solid #d4a72c;color:#facc15;padding:6px 10px;border-radius:8px;font-weight:800;font-size:11px;box-shadow:0 4px 12px #0008}.active-btn span{font-family:monospace}.mobile-active-btn{position:absolute;right:155px;bottom:82px;z-index:25;background:#111827;border:2px solid #d4a72c;color:#facc15;padding:9px 10px;border-radius:9px;font-weight:800;font-size:11px;box-shadow:0 4px 12px #0008}@media(max-width:640px){.mobile-active-btn{right:145px;bottom:82px}}
+ 
