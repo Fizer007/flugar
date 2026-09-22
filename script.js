@@ -141,6 +141,9 @@
         let peerReady = false;
         const networkProjectileIds = new Set();
         const takenItems = new Set();
+        const openedChests = new Set();
+        const chestLootCache = new Map();
+        let chestToastAt = 0;
         let floatingHits = [];
         let dummyHits = [];
         let itemHudHidden = new Set();
@@ -216,6 +219,19 @@
                     renderItemHud();
                     if (isRoomHost) broadcast(packet, senderId);
                 }
+            } else if (packet.type === 'chest_opened') {
+                if (packet.chestKey) {
+                    openedChests.add(packet.chestKey);
+                    if (Array.isArray(packet.loot)) chestLootCache.set(packet.chestKey, packet.loot);
+                    renderItemHud();
+                }
+                if (isRoomHost) broadcast(packet, senderId);
+            } else if (packet.type === 'chest_state') {
+                (packet.opened || []).forEach(k => openedChests.add(k));
+                (packet.loot || []).forEach(entry => {
+                    if (entry && entry.key && Array.isArray(entry.loot)) chestLootCache.set(entry.key, entry.loot);
+                });
+                renderItemHud();
             } else if (packet.type === 'item_state') {
                 (packet.taken || []).forEach(k => takenItems.add(k));
                 renderItemHud();
@@ -255,6 +271,7 @@
             } else if (packet.type === 'hello') {
                 if (isRoomHost) {
                     sendToConnection(packet.conn || null, {type:'item_state', taken:[...takenItems]});
+                    sendToConnection(packet.conn || null, {type:'chest_state', opened:[...openedChests], loot:[...chestLootCache.entries()].map(([key, loot])=>({key,loot}))});
                 }
             }
         }
@@ -269,6 +286,7 @@
                     players: Object.values(remotePlayers)
                 });
                 sendToConnection(conn, { type: 'item_state', taken: [...takenItems] });
+                sendToConnection(conn, { type: 'chest_state', opened: [...openedChests], loot: [...chestLootCache.entries()].map(([key, loot]) => ({key, loot})) });
                 sendToConnection(conn, localPlayerPacket());
                 if (isRoomHost) broadcast(localPlayerPacket(), conn.peer);
             });
@@ -705,6 +723,8 @@
             projectiles = [];
             networkProjectileIds.clear();
             takenItems.clear();
+            openedChests.clear();
+            chestLootCache.clear();
             goldenRoomOverrides.clear();
             d6Charges = 6;
             inventory = {coins:0,keys:0,bombs:0};
@@ -1020,6 +1040,70 @@
 
         function roomKey() { return `${localPlayer.rx},${localPlayer.ry}`; }
 
+        function chestKey(rx, ry, index) {
+            return `chest:${rx},${ry}:${index}`;
+        }
+
+        function getRoomChests(rx, ry) {
+            return getRoomObstacles(rx, ry).filter(o => o.type === 'chest');
+        }
+
+        function getChestLoot(rx, ry, index) {
+            const key = chestKey(rx, ry, index);
+            if (chestLootCache.has(key)) return chestLootCache.get(key);
+            const h = Math.floor(coordHash(rx * 7 + index * 13 + 19, ry * 11 - index * 5 - 7) * 1000000);
+            const useItem = (h % 100) >= 68;
+            const x = getRoomChests(rx, ry)[index]?.x ?? 400;
+            const y = (getRoomChests(rx, ry)[index]?.y ?? 250) + 55;
+            const loot = useItem
+                ? [{ itemId:`chest_${index}_0`, type:'item', ...ITEM_POOL[(h >>> 3) % ITEM_POOL.length], x, y }]
+                : [{ itemId:`chest_${index}_0`, type:'pickup', ...PICKUP_POOL[(h >>> 5) % PICKUP_POOL.length], x, y }];
+            chestLootCache.set(key, loot);
+            return loot;
+        }
+
+        function getChestLootItems() {
+            const out = [];
+            const chests = getRoomChests(localPlayer.rx, localPlayer.ry);
+            chests.forEach((chest, index) => {
+                const key = chestKey(localPlayer.rx, localPlayer.ry, index);
+                if (!openedChests.has(key)) return;
+                getChestLoot(localPlayer.rx, localPlayer.ry, index).forEach(item => out.push(item));
+            });
+            return out;
+        }
+
+        function openNearbyChest() {
+            const chests = getRoomChests(localPlayer.rx, localPlayer.ry);
+            for (let i = 0; i < chests.length; i++) {
+                const chest = chests[i];
+                const key = chestKey(localPlayer.rx, localPlayer.ry, i);
+                if (openedChests.has(key)) continue;
+                if (Math.hypot(localPlayer.x - chest.x, localPlayer.y - chest.y) > 58) continue;
+                if (inventory.keys <= 0) {
+                    const now = performance.now();
+                    if (now - chestToastAt > 900) {
+                        chestToastAt = now;
+                        showToast('🔑 Нужен ключ');
+                    }
+                    return;
+                }
+                inventory.keys--;
+                openedChests.add(key);
+                const loot = getChestLoot(localPlayer.rx, localPlayer.ry, i);
+                audio.playDoor();
+                showToast('🔓 Сундук открыт!');
+                const packet = {type:'chest_opened', chestKey:key, loot};
+                if (isRoomHost) broadcast(packet); else sendToConnection(hostConnection, packet);
+                renderItemHud();
+                return;
+            }
+        }
+
+        function allNearbyItems() {
+            return [...goldenRoomItems(), ...getChestLootItems()];
+        }
+
         function applyItem(item) {
             if (item.type === 'pickup') {
                 if (item.kind === 'coin') inventory.coins++;
@@ -1042,7 +1126,8 @@
         }
 
         function collectNearbyItem() {
-            const items = goldenRoomItems();
+            openNearbyChest();
+            const items = allNearbyItems();
             if (!items.length) return;
             const key = roomKey();
             for (const item of items) {
@@ -1115,7 +1200,7 @@
         function renderItemDescription() {
             const box=document.getElementById('itemDescription');
             if(!box) return;
-            const item=goldenRoomItems().find(it=>!itemTaken(roomKey(),it.itemId) && Math.hypot(localPlayer.x-it.x,localPlayer.y-it.y)<90);
+            const item=allNearbyItems().find(it=>!itemTaken(roomKey(),it.itemId) && Math.hypot(localPlayer.x-it.x,localPlayer.y-it.y)<90);
             if(!item){ box.classList.add('hidden'); return; }
             box.classList.remove('hidden');
             box.innerHTML=`<b>${item.icon} ${item.name}</b><br><span>${item.desc}</span><br><small>Подойди ближе, чтобы взять</small>`;
@@ -1365,6 +1450,22 @@
                                 }
                             }
                         }
+                        if (obs.type === 'chest') {
+                            const chestIndex = getRoomChests(localPlayer.rx, localPlayer.ry).indexOf(obs);
+                            const isOpen = openedChests.has(chestKey(localPlayer.rx, localPlayer.ry, chestIndex));
+                            if (!isOpen) {
+                                const closestX = Math.max(obs.x - obs.w/2, Math.min(newX, obs.x + obs.w/2));
+                                const closestY = Math.max(obs.y - obs.h/2, Math.min(newY, obs.y + obs.h/2));
+                                const distX = newX - closestX, distY = newY - closestY;
+                                const distance = Math.hypot(distX, distY);
+                                if (distance < localPlayer.radius) {
+                                    if (distance > 0) {
+                                        newX = closestX + (distX / distance) * localPlayer.radius;
+                                        newY = closestY + (distY / distance) * localPlayer.radius;
+                                    }
+                                }
+                            }
+                        }
                     });
                 }
 
@@ -1530,13 +1631,9 @@
                     ctx.stroke();
                     ctx.restore();
                 } else if (obs.type === 'chest') {
-                    ctx.save();
-                    ctx.fillStyle = '#facc15';
-                    ctx.strokeStyle = '#000';
-                    ctx.lineWidth = 3;
-                    ctx.fillRect(obs.x - obs.w/2, obs.y - obs.h/2, obs.w, obs.h);
-                    ctx.strokeRect(obs.x - obs.w/2, obs.y - obs.h/2, obs.w, obs.h);
-                    ctx.restore();
+                    const chestIndex = getRoomChests(localPlayer.rx, localPlayer.ry).indexOf(obs);
+                    const isOpen = openedChests.has(chestKey(localPlayer.rx, localPlayer.ry, chestIndex));
+                    drawChest(obs.x, obs.y, isOpen);
                 } else if (obs.type === 'spike') {
                     ctx.fillStyle = '#78716c';
                     ctx.strokeStyle = '#000000';
@@ -1549,6 +1646,23 @@
                     ctx.arc(obs.x, obs.y, 6, 0, Math.PI * 2);
                     ctx.fill();
                 }
+            });
+
+            getChestLootItems().forEach(item => {
+                if (itemTaken(roomKey(), item.itemId)) return;
+                ctx.save();
+                const pulse = 1 + Math.sin(performance.now()/180) * 0.05;
+                ctx.translate(item.x, item.y); ctx.scale(pulse, pulse);
+                ctx.fillStyle='rgba(250,204,21,.18)'; ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2); ctx.fill();
+                if (item.type === 'item') {
+                    ctx.fillStyle='#4b2e12'; ctx.strokeStyle='#000'; ctx.lineWidth=3;
+                    ctx.fillRect(-20,10,40,9); ctx.strokeRect(-20,10,40,9);
+                    ctx.fillStyle='#facc15'; ctx.beginPath(); ctx.arc(0,-10,15,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                    ctx.font='22px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,0,-10);
+                } else {
+                    ctx.font='27px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.icon,0,0);
+                }
+                ctx.restore();
             });
 
             if (isKeeperRoom(localPlayer.rx, localPlayer.ry)) drawKeeperRoom();
@@ -1594,6 +1708,42 @@
 
             ctx.restore();
             renderItemDescription();
+        }
+
+        function drawChest(x, y, open) {
+            ctx.save();
+            const bob = open ? 0 : Math.sin(performance.now()/260) * 1.2;
+            ctx.translate(x, y + bob);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#1a1006';
+            if (!open) {
+                ctx.fillStyle = '#8b5a2b';
+                ctx.fillRect(-24, -15, 48, 30);
+                ctx.strokeRect(-24, -15, 48, 30);
+                ctx.fillStyle = '#b77932';
+                ctx.fillRect(-24, -15, 48, 9);
+                ctx.strokeRect(-24, -15, 48, 9);
+                ctx.fillStyle = '#facc15';
+                ctx.fillRect(-4, -2, 8, 11);
+                ctx.strokeRect(-4, -2, 8, 11);
+            } else {
+                ctx.fillStyle = '#8b5a2b';
+                ctx.fillRect(-24, -9, 48, 24);
+                ctx.strokeRect(-24, -9, 48, 24);
+                ctx.fillStyle = '#b77932';
+                ctx.save();
+                ctx.translate(0, -11);
+                ctx.rotate(-0.18);
+                ctx.fillRect(-24, -10, 48, 9);
+                ctx.strokeRect(-24, -10, 48, 9);
+                ctx.restore();
+                ctx.fillStyle = '#facc15';
+                ctx.fillRect(-4, -2, 8, 7);
+                ctx.strokeRect(-4, -2, 8, 7);
+                ctx.fillStyle = '#ffe8a3';
+                ctx.fillRect(-14, 5, 28, 3);
+            }
+            ctx.restore();
         }
 
         function drawWallSegment(x, y, w, h) {
