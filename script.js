@@ -392,6 +392,9 @@
             return url.toString();
         }
 
+        // Inventory is declared before any startup/network function can touch it.
+        let inventory = { coins:0, keys:0, bombs:0 };
+
         async function autoJoinRoom() {
             const fromUrl = getRoomFromUrl();
             const saved = getSavedRoom();
@@ -965,8 +968,6 @@
             { id:'bomb', name:'Бомба', icon:'💣', desc:'+1 бомба', kind:'bomb' }
         ];
 
-        let inventory = { coins:0, keys:0, bombs:0 };
-
         function coordHash(rx, ry) {
             const n = Math.sin((rx + 41) * 127.1 + (ry + 17) * 311.7) * 43758.5453123;
             return Math.abs(n - Math.floor(n));
@@ -1099,11 +1100,18 @@
 
         document.getElementById('btnBomb')?.addEventListener('click', () => { audio.init(); placeBomb(); });
 
-        // PeerJS запускаем только после инициализации localPlayer и HUD.
-        autoJoinRoom().catch(err => {
-            console.error(err);
-            showToast(err.message || 'Ошибка запуска онлайн');
-        });
+        // Не подключаемся к сети автоматически: лобби должно оставаться рабочим даже офлайн.
+        // Если комнату явно передали через URL — подключаемся к ней после загрузки.
+        const startupRoom = getRoomFromUrl();
+        if (startupRoom) {
+            joinNetworkRoom(startupRoom, true).catch(err => {
+                console.error(err);
+                showToast(err.message || 'Ошибка запуска онлайн');
+            });
+        }
+
+        // Инициализируем меню предметов после объявления inventory.
+        setupItemMenu();
 
         function renderItemDescription() {
             const box=document.getElementById('itemDescription');
