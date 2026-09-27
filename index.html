@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Isaac Online — кооператив с другом</title>
+<meta name="description" content="Binding of Isaac x Madness Combat — браузерная кооп-игра для двоих через P2P, без сервера.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👁️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik+Dirt&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ================= ЛОББИ ================= -->
+<section id="screenLobby" class="screen lobby">
+  <div class="lobby-wrap">
+    <header class="lobby-head">
+      <h1><span class="eye">👁️</span> Isaac<span class="accent">Online</span></h1>
+      <p class="tag">Basement Crawler x Madness — кооп на двоих через P2P</p>
+    </header>
+
+    <div class="lobby-grid">
+      <div class="panel">
+        <label class="field">
+          <span>Имя игрока</span>
+          <input id="inputName" type="text" maxlength="14" placeholder="Isaac" autocomplete="off">
+        </label>
+
+        <div class="char-select">
+          <div class="char-select-head">
+            <span>Персонаж</span>
+            <b id="selectedChar">Isaac</b>
+          </div>
+          <div id="charGrid" class="char-grid"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <button id="btnSolo" class="btn btn-solo" type="button">▶ Играть соло</button>
+
+        <div class="sep"><span>или кооп с другом</span></div>
+
+        <button id="btnCreate" class="btn btn-primary" type="button">➕ Создать комнату</button>
+
+        <div id="inviteBox" class="invite-box" hidden>
+          <span>Код комнаты:</span>
+          <b id="inviteCode">——————</b>
+        </div>
+
+        <div class="join-row">
+          <input id="inputRoom" type="text" maxlength="6" placeholder="КОД КОМНАТЫ" autocomplete="off" spellcheck="false">
+          <button id="btnJoin" class="btn btn-secondary" type="button">Войти</button>
+        </div>
+
+        <p id="lobbyStatus" class="status" hidden></p>
+
+        <details class="cheats-details">
+          <summary>Секретные коды</summary>
+          <div class="cheat-row">
+            <input id="inputCheat" type="text" placeholder="ВВЕДИТЕ КОД" autocomplete="off" spellcheck="false">
+            <button id="btnCheat" class="btn btn-ghost" type="button">OK</button>
+          </div>
+          <ul id="cheatList" class="cheat-list">
+            <li><b>MADNESS</b> — двойной урон и скорострельность</li>
+            <li><b>GOD</b> — бессмертие</li>
+            <li><b>SPEED</b> — суперскорость</li>
+            <li><b>RESET</b> — отключить читы</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <footer class="lobby-foot">
+      Игра работает полностью в браузере: P2P-соединение (WebRTC) без своего сервера. Отправьте другу код комнаты — он вводит его и жмёт «Войти».
+    </footer>
+  </div>
+</section>
+
+<!-- ================= ИГРА ================= -->
+<section id="screenGame" class="screen game" hidden>
+
+  <div id="topBar" class="topbar">
+    <div class="tb-group tb-room">
+      <span class="tb-label">Комната</span>
+      <b id="uiRoomCode">СОЛО</b>
+      <button id="btnCopy" class="icon-btn" type="button" title="Скопировать код" hidden>📋</button>
+      <span id="uiPing" class="ping" hidden></span>
+    </div>
+
+    <div id="hearts" class="hearts" aria-label="Здоровье"></div>
+
+    <div class="tb-group tb-stats">
+      <span title="Монеты">🪙 <b id="uiCoins">0</b></span>
+      <span title="Убийства">💀 <b id="uiKills">0</b></span>
+      <span title="Комнат пройдено">🚪 <b id="uiRooms">0</b></span>
+      <span title="Игроков в комнате">🧑‍🤝‍🧑 <b id="uiPlayers">1</b></span>
+    </div>
+
+    <div class="tb-group tb-actions">
+      <button id="btnMute" class="icon-btn" type="button" title="Звук">🔊</button>
+      <button id="btnChat" class="icon-btn" type="button" title="Чат" hidden>
+        💬<span id="chatBadge" class="badge" hidden>0</span>
+      </button>
+      <button id="btnLeave" class="icon-btn danger" type="button" title="Выйти в лобби">⏏</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="minimap" width="120" height="120"></canvas>
+    <div id="banner" class="banner"></div>
+
+    <div id="chatBox" class="chat-box" hidden>
+      <div class="chat-head">
+        <span>Чат комнаты</span>
+        <button id="btnCloseChat" class="icon-btn" type="button">✕</button>
+      </div>
+      <div id="chatMessages" class="chat-messages"></div>
+      <form id="chatForm" class="chat-form" autocomplete="off">
+        <input id="chatInput" type="text" maxlength="120" placeholder="Сообщение…">
+      </form>
+    </div>
+
+    <div id="touchControls" class="touch-controls">
+      <div class="pad pad-move">
+        <button data-pad="move" data-dir="up" class="pad-btn pad-up">▲</button>
+        <button data-pad="move" data-dir="left" class="pad-btn pad-left">◀</button>
+        <button data-pad="move" data-dir="right" class="pad-btn pad-right">▶</button>
+        <button data-pad="move" data-dir="down" class="pad-btn pad-down">▼</button>
+      </div>
+      <div class="pad pad-aim">
+        <button data-pad="aim" data-dir="up" class="pad-btn shoot-btn shoot-up">🔺</button>
+        <button data-pad="aim" data-dir="left" class="pad-btn shoot-btn shoot-left">🔺</button>
+        <button data-pad="aim" data-dir="right" class="pad-btn shoot-btn shoot-right">🔺</button>
+        <button data-pad="aim" data-dir="down" class="pad-btn shoot-btn shoot-down">🔺</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <h2 id="ovTitle">Игра окончена</h2>
+      <p id="ovText"></p>
+      <p id="ovStats" class="ov-stats"></p>
+      <div class="overlay-actions">
+        <button id="btnRestart" class="btn btn-primary" type="button" hidden>Заново</button>
+        <button id="btnOvLobby" class="btn btn-secondary" type="button">В лобби</button>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<div id="toast" class="toast"><span id="toastMsg"></span></div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
